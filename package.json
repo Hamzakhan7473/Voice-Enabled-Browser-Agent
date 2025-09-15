@@ -1,0 +1,37 @@
+{
+  "name": "voice-enabled-browser-agent",
+  "version": "1.0.0",
+  "description": "A voice-enabled browser automation agent with speech-to-text, intent parsing, and browser automation",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "jest"
+  },
+  "keywords": [
+    "voice",
+    "browser-automation",
+    "speech-to-text",
+    "ai-agent",
+    "browserbase"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@deepgram/sdk": "^3.4.0",
+    "@browserbase/sdk": "^0.1.0",
+    "playwright": "^1.40.0",
+    "express": "^4.18.2",
+    "socket.io": "^4.7.4",
+    "dotenv": "^16.3.1",
+    "openai": "^4.20.1",
+    "csv-writer": "^1.6.0",
+    "fs-extra": "^11.1.1",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "jest": "^29.7.0"
+  }
+}
