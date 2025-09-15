@@ -261,6 +261,8 @@
             align-items: center;
             justify-content: center;
             font-size: 1.5rem;
+            position: relative;
+            overflow: hidden;
         }
 
         .card-icon.voice {
@@ -269,6 +271,22 @@
 
         .card-icon.status {
             background: var(--success-gradient);
+        }
+
+        .card-icon::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+            transform: translateX(-100%);
+            transition: transform 0.6s ease;
+        }
+
+        .card-icon:hover::before {
+            transform: translateX(100%);
         }
 
         .card-title {
@@ -687,7 +705,20 @@
     <!-- Navigation -->
     <nav class="navbar">
         <div class="nav-container">
-            <div class="logo">🎤 VoiceAgent</div>
+            <div class="logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="display: inline-block; margin-right: 8px;">
+                    <path d="M12 1C10.34 1 9 2.34 9 4V12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12V4C15 2.34 13.66 1 12 1Z" fill="url(#logoGradient)"/>
+                    <path d="M19 10V12C19 16.42 15.42 20 11 20H13C17.42 20 21 16.42 21 12V10H19Z" fill="url(#logoGradient)"/>
+                    <path d="M5 10V12C5 16.42 8.58 20 13 20H11C6.58 20 3 16.42 3 12V10H5Z" fill="url(#logoGradient)"/>
+                    <defs>
+                        <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#667eea"/>
+                            <stop offset="100%" style="stop-color:#764ba2"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+                VoiceAgent
+            </div>
             <ul class="nav-links">
                 <li><a href="#features">Features</a></li>
                 <li><a href="#pricing">Pricing</a></li>
@@ -705,10 +736,18 @@
             <p>Your journey to voice-powered browser automation starts here. Control your browser with natural speech commands and watch the magic happen.</p>
             <div class="hero-cta">
                 <button class="btn-primary" onclick="scrollToDashboard()">
-                    🚀 Start Voice Control
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="margin-right: 8px;">
+                        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                        <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                        <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                    </svg>
+                    Start Voice Control
                 </button>
                 <button class="btn-secondary" onclick="showDemo()">
-                    📺 Watch Demo
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="margin-right: 8px;">
+                        <polygon points="5,3 19,12 5,21" fill="currentColor"/>
+                    </svg>
+                    Watch Demo
                 </button>
             </div>
         </div>
@@ -725,28 +764,101 @@
             <!-- Voice Control Panel -->
             <div class="card voice-control">
                 <div class="card-header">
-                    <div class="card-icon voice">🎙️</div>
+                    <div class="card-icon voice">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 1C10.34 1 9 2.34 9 4V12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12V4C15 2.34 13.66 1 12 1Z" fill="white"/>
+                            <path d="M19 10V12C19 16.42 15.42 20 11 20H13C17.42 20 21 16.42 21 12V10H19Z" fill="white"/>
+                            <path d="M5 10V12C5 16.42 8.58 20 13 20H11C6.58 20 3 16.42 3 12V10H5Z" fill="white"/>
+                            <circle cx="12" cy="8" r="1" fill="url(#voiceGradient)"/>
+                            <defs>
+                                <linearGradient id="voiceGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#667eea"/>
+                                    <stop offset="100%" style="stop-color:#764ba2"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                    </div>
                     <h3 class="card-title">Voice Control</h3>
                 </div>
                 
                 <button id="micButton" class="mic-button" title="Click to start/stop listening">
-                    🎤
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 1C10.34 1 9 2.34 9 4V12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12V4C15 2.34 13.66 1 12 1Z" fill="currentColor"/>
+                        <path d="M19 10V12C19 16.42 15.42 20 11 20H13C17.42 20 21 16.42 21 12V10H19Z" fill="currentColor"/>
+                        <path d="M5 10V12C5 16.42 8.58 20 13 20H11C6.58 20 3 16.42 3 12V10H5Z" fill="currentColor"/>
+                        <circle cx="12" cy="8" r="1.5" fill="white"/>
+                    </svg>
                 </button>
                 <p id="micStatus" class="mic-status">Click the microphone to start listening</p>
                 
                 <div class="action-buttons">
-                    <button class="action-btn" onclick="takeScreenshot()">📸 Screenshot</button>
-                    <button class="action-btn" onclick="extractData()">📊 Extract Data</button>
-                    <button class="action-btn" onclick="refreshPage()">🔄 Refresh</button>
-                    <button class="action-btn" onclick="exportSession()">💾 Export</button>
-                    <button class="action-btn" onclick="clearLogs()">🗑️ Clear</button>
+                    <button class="action-btn" onclick="takeScreenshot()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="margin-right: 6px;">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
+                            <polyline points="21,15 16,10 5,21" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        Screenshot
+                    </button>
+                    <button class="action-btn" onclick="extractData()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="margin-right: 6px;">
+                            <path d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            <polyline points="14,2 14,8 20,8" stroke="currentColor" stroke-width="2"/>
+                            <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="2"/>
+                            <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="2"/>
+                            <polyline points="10,9 9,9 8,9" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        Extract Data
+                    </button>
+                    <button class="action-btn" onclick="refreshPage()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="margin-right: 6px;">
+                            <polyline points="23,4 23,10 17,10" stroke="currentColor" stroke-width="2"/>
+                            <polyline points="1,20 1,14 7,14" stroke="currentColor" stroke-width="2"/>
+                            <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        Refresh
+                    </button>
+                    <button class="action-btn" onclick="exportSession()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="margin-right: 6px;">
+                            <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <polyline points="7,10 12,15 17,10" stroke="currentColor" stroke-width="2"/>
+                            <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        Export
+                    </button>
+                    <button class="action-btn" onclick="clearLogs()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="margin-right: 6px;">
+                            <polyline points="3,6 5,6 21,6" stroke="currentColor" stroke-width="2"/>
+                            <path d="M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6" stroke="currentColor" stroke-width="2"/>
+                            <line x1="10" y1="11" x2="10" y2="17" stroke="currentColor" stroke-width="2"/>
+                            <line x1="14" y1="11" x2="14" y2="17" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        Clear
+                    </button>
                 </div>
             </div>
 
             <!-- Status Panel -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-icon status">📊</div>
+                    <div class="card-icon status">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <rect x="3" y="3" width="7" height="7" fill="white" rx="1"/>
+                            <rect x="14" y="3" width="7" height="7" fill="white" rx="1"/>
+                            <rect x="3" y="14" width="7" height="7" fill="white" rx="1"/>
+                            <rect x="14" y="14" width="7" height="7" fill="white" rx="1"/>
+                            <path d="M6.5 6.5H9.5V9.5H6.5V6.5Z" fill="url(#statusGradient)"/>
+                            <path d="M17.5 6.5H20.5V9.5H17.5V6.5Z" fill="url(#statusGradient)"/>
+                            <path d="M6.5 17.5H9.5V20.5H6.5V17.5Z" fill="url(#statusGradient)"/>
+                            <path d="M17.5 17.5H20.5V20.5H17.5V17.5Z" fill="url(#statusGradient)"/>
+                            <defs>
+                                <linearGradient id="statusGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#43e97b"/>
+                                    <stop offset="100%" style="stop-color:#38f9d7"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                    </div>
                     <h3 class="card-title">System Status</h3>
                 </div>
                 
@@ -778,7 +890,13 @@
         <!-- Activity Feed -->
         <div class="activity-feed">
             <div class="feed-header">
-                <h3 class="feed-title">📋 Activity Feed</h3>
+                <h3 class="feed-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="margin-right: 8px; display: inline-block;">
+                        <path d="M9 12L11 14L15 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                    Activity Feed
+                </h3>
                 <button class="action-btn" onclick="clearLogs()">Clear Logs</button>
             </div>
             <div class="feed-container">
@@ -791,39 +909,72 @@
         </div>
     </section>
 
-    <!-- Confirmation Modal -->
-    <div id="confirmationModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">⚠️ Confirmation Required</h3>
-                <button class="modal-close" onclick="closeModal('confirmationModal')">&times;</button>
-            </div>
+        <!-- Confirmation Modal -->
+        <div id="confirmationModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="margin-right: 8px; display: inline-block;">
+                            <path d="M12 9V13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <path d="M12 17H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        Confirmation Required
+                    </h3>
+                    <button class="modal-close" onclick="closeModal('confirmationModal')">&times;</button>
+                </div>
             <div id="confirmationText"></div>
             <div class="modal-buttons">
-                <button class="btn-confirm" onclick="confirmAction(true)">✅ Confirm</button>
-                <button class="btn-cancel" onclick="confirmAction(false)">❌ Cancel</button>
+                <button class="btn-confirm" onclick="confirmAction(true)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="margin-right: 6px;">
+                        <path d="M9 12L11 14L15 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                    Confirm
+                </button>
+                <button class="btn-cancel" onclick="confirmAction(false)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="margin-right: 6px;">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                        <line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" stroke-width="2"/>
+                        <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                    Cancel
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- Error Modal -->
-    <div id="errorModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">❌ Error</h3>
-                <button class="modal-close" onclick="closeModal('errorModal')">&times;</button>
-            </div>
+        <!-- Error Modal -->
+        <div id="errorModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="margin-right: 8px; display: inline-block;">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                            <line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" stroke-width="2"/>
+                            <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        Error
+                    </h3>
+                    <button class="modal-close" onclick="closeModal('errorModal')">&times;</button>
+                </div>
             <div id="errorText"></div>
         </div>
     </div>
 
-    <!-- Success Modal -->
-    <div id="successModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">✅ Success</h3>
-                <button class="modal-close" onclick="closeModal('successModal')">&times;</button>
-            </div>
+        <!-- Success Modal -->
+        <div id="successModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="margin-right: 8px; display: inline-block;">
+                            <path d="M9 12L11 14L15 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        Success
+                    </h3>
+                    <button class="modal-close" onclick="closeModal('successModal')">&times;</button>
+                </div>
             <div id="successText"></div>
         </div>
     </div>
