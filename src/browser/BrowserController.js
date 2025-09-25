@@ -1,4 +1,4 @@
-import { Browserbase } from '@browserbase/sdk';
+import axios from 'axios';
 import { chromium } from 'playwright';
 import fs from 'fs-extra';
 import path from 'path';
@@ -7,665 +7,491 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-class BrowserController {
-  constructor(options = {}) {
-    this.apiKey = process.env.BROWSERBASE_API_KEY;
-    this.projectId = process.env.BROWSERBASE_PROJECT_ID;
-    
-    if (!this.apiKey || !this.projectId) {
-      throw new Error('BROWSERBASE_API_KEY and BROWSERBASE_PROJECT_ID environment variables are required');
-    }
-
-    this.browserbase = new Browserbase({
-      apiKey: this.apiKey,
-      projectId: this.projectId
-    });
-
-    this.browser = null;
-    this.context = null;
-    this.page = null;
-    this.sessionId = null;
-    this.isConnected = false;
-    this.screenshotsDir = path.join(__dirname, '../../screenshots');
-    this.sessionData = {
-      startTime: null,
-      currentUrl: null,
-      pageTitle: null,
-      actions: [],
-      screenshots: [],
-      extractedData: []
-    };
-
-    this.ensureScreenshotsDir();
-  }
-
-  async ensureScreenshotsDir() {
-    try {
-      await fs.ensureDir(this.screenshotsDir);
-    } catch (error) {
-      console.error('Failed to create screenshots directory:', error);
-    }
-  }
-
-  async createSession(options = {}) {
-    try {
-      console.log('🌐 Creating Browserbase session...');
-      
-      const sessionOptions = {
-        projectId: this.projectId,
-        ...options
-      };
-
-      const session = await this.browserbase.sessions.create(sessionOptions);
-      this.sessionId = session.id;
-      
-      console.log(`✅ Browserbase session created: ${this.sessionId}`);
-      
-      // Connect Playwright to the Browserbase session
-      await this.connectPlaywright();
-      
-      return session;
-    } catch (error) {
-      console.error('Failed to create Browserbase session:', error);
-      throw error;
-    }
-  }
-
-  async connectPlaywright() {
-    try {
-      if (!this.sessionId) {
-        throw new Error('No active session to connect to');
-      }
-
-      // Get the WebSocket URL for the session
-      const session = await this.browserbase.sessions.get(this.sessionId);
-      const wsEndpoint = session.wsEndpoint;
-
-      // Connect Playwright to the Browserbase session
-      this.browser = await chromium.connectOverCDP(wsEndpoint);
-      this.context = this.browser.contexts()[0] || await this.browser.newContext();
-      this.page = this.context.pages()[0] || await this.context.newPage();
-      
-      this.isConnected = true;
-      this.sessionData.startTime = new Date().toISOString();
-      
-      console.log('✅ Connected to Browserbase session via Playwright');
-      
-      // Set up page event listeners
-      this.setupPageListeners();
-      
-    } catch (error) {
-      console.error('Failed to connect Playwright to Browserbase session:', error);
-      throw error;
-    }
-  }
-
-  setupPageListeners() {
-    if (!this.page) return;
-
-    this.page.on('load', async () => {
-      try {
-        const url = this.page.url();
-        const title = await this.page.title();
+export class BrowserController {
+    constructor(options = {}) {
+        this.apiKey = process.env.BROWSERBASE_API_KEY;
+        this.projectId = process.env.BROWSERBASE_PROJECT_ID;
         
-        this.sessionData.currentUrl = url;
-        this.sessionData.pageTitle = title;
-        
-        console.log(`📄 Page loaded: ${title} (${url})`);
-      } catch (error) {
-        console.error('Error handling page load:', error);
-      }
-    });
-
-    this.page.on('console', (msg) => {
-      console.log(`🖥️ Browser console ${msg.type()}: ${msg.text()}`);
-    });
-
-    this.page.on('pageerror', (error) => {
-      console.error('❌ Page error:', error.message);
-    });
-  }
-
-  async navigate(url) {
-    try {
-      if (!this.page) {
-        throw new Error('No active page');
-      }
-
-      console.log(`🧭 Navigating to: ${url}`);
-      
-      await this.page.goto(url, { 
-        waitUntil: 'networkidle',
-        timeout: 30000 
-      });
-      
-      this.sessionData.currentUrl = url;
-      this.sessionData.pageTitle = await this.page.title();
-      
-      // Log the action
-      this.sessionData.actions.push({
-        type: 'navigate',
-        url: url,
-        timestamp: new Date().toISOString(),
-        success: true
-      });
-      
-      return {
-        url: this.page.url(),
-        title: this.sessionData.pageTitle,
-        success: true
-      };
-    } catch (error) {
-      console.error('Navigation failed:', error);
-      
-      this.sessionData.actions.push({
-        type: 'navigate',
-        url: url,
-        timestamp: new Date().toISOString(),
-        success: false,
-        error: error.message
-      });
-      
-      throw error;
-    }
-  }
-
-  async search(query, selector = 'input[type="search"], input[name="q"], input[placeholder*="search" i]') {
-    try {
-      if (!this.page) {
-        throw new Error('No active page');
-      }
-
-      console.log(`🔍 Searching for: ${query}`);
-      
-      // Try to find search input
-      const searchInput = await this.page.$(selector);
-      if (!searchInput) {
-        throw new Error('Search input not found');
-      }
-
-      // Clear and fill search input
-      await searchInput.clear();
-      await searchInput.fill(query);
-      
-      // Try to submit the search
-      await this.page.keyboard.press('Enter');
-      
-      // Wait for results to load
-      await this.page.waitForLoadState('networkidle');
-      
-      this.sessionData.actions.push({
-        type: 'search',
-        query: query,
-        selector: selector,
-        timestamp: new Date().toISOString(),
-        success: true
-      });
-      
-      return {
-        query: query,
-        url: this.page.url(),
-        success: true
-      };
-    } catch (error) {
-      console.error('Search failed:', error);
-      
-      this.sessionData.actions.push({
-        type: 'search',
-        query: query,
-        selector: selector,
-        timestamp: new Date().toISOString(),
-        success: false,
-        error: error.message
-      });
-      
-      throw error;
-    }
-  }
-
-  async click(selector, index = 0) {
-    try {
-      if (!this.page) {
-        throw new Error('No active page');
-      }
-
-      console.log(`🖱️ Clicking: ${selector} (index: ${index})`);
-      
-      // Get all matching elements
-      const elements = await this.page.$$(selector);
-      
-      if (elements.length === 0) {
-        throw new Error(`No elements found for selector: ${selector}`);
-      }
-      
-      if (index >= elements.length) {
-        throw new Error(`Index ${index} out of range. Found ${elements.length} elements.`);
-      }
-      
-      const element = elements[index];
-      
-      // Scroll element into view
-      await element.scrollIntoViewIfNeeded();
-      
-      // Click the element
-      await element.click();
-      
-      // Wait for any navigation or updates
-      await this.page.waitForTimeout(1000);
-      
-      this.sessionData.actions.push({
-        type: 'click',
-        selector: selector,
-        index: index,
-        timestamp: new Date().toISOString(),
-        success: true
-      });
-      
-      return {
-        selector: selector,
-        index: index,
-        success: true
-      };
-    } catch (error) {
-      console.error('Click failed:', error);
-      
-      this.sessionData.actions.push({
-        type: 'click',
-        selector: selector,
-        index: index,
-        timestamp: new Date().toISOString(),
-        success: false,
-        error: error.message
-      });
-      
-      throw error;
-    }
-  }
-
-  async fill(selector, value, fieldType = 'input') {
-    try {
-      if (!this.page) {
-        throw new Error('No active page');
-      }
-
-      console.log(`📝 Filling ${fieldType}: ${selector} with "${value}"`);
-      
-      const element = await this.page.$(selector);
-      if (!element) {
-        throw new Error(`Element not found: ${selector}`);
-      }
-      
-      // Clear existing value
-      await element.clear();
-      
-      // Fill with new value
-      await element.fill(value);
-      
-      this.sessionData.actions.push({
-        type: 'fill',
-        selector: selector,
-        value: value,
-        fieldType: fieldType,
-        timestamp: new Date().toISOString(),
-        success: true
-      });
-      
-      return {
-        selector: selector,
-        value: value,
-        success: true
-      };
-    } catch (error) {
-      console.error('Fill failed:', error);
-      
-      this.sessionData.actions.push({
-        type: 'fill',
-        selector: selector,
-        value: value,
-        fieldType: fieldType,
-        timestamp: new Date().toISOString(),
-        success: false,
-        error: error.message
-      });
-      
-      throw error;
-    }
-  }
-
-  async scroll(direction, amount = 500) {
-    try {
-      if (!this.page) {
-        throw new Error('No active page');
-      }
-
-      console.log(`📜 Scrolling ${direction} by ${amount}px`);
-      
-      let deltaX = 0, deltaY = 0;
-      
-      switch (direction.toLowerCase()) {
-        case 'up':
-          deltaY = -amount;
-          break;
-        case 'down':
-          deltaY = amount;
-          break;
-        case 'left':
-          deltaX = -amount;
-          break;
-        case 'right':
-          deltaX = amount;
-          break;
-        default:
-          throw new Error(`Invalid scroll direction: ${direction}`);
-      }
-      
-      await this.page.mouse.wheel(deltaX, deltaY);
-      
-      this.sessionData.actions.push({
-        type: 'scroll',
-        direction: direction,
-        amount: amount,
-        timestamp: new Date().toISOString(),
-        success: true
-      });
-      
-      return {
-        direction: direction,
-        amount: amount,
-        success: true
-      };
-    } catch (error) {
-      console.error('Scroll failed:', error);
-      
-      this.sessionData.actions.push({
-        type: 'scroll',
-        direction: direction,
-        amount: amount,
-        timestamp: new Date().toISOString(),
-        success: false,
-        error: error.message
-      });
-      
-      throw error;
-    }
-  }
-
-  async takeScreenshot(selector = null, fullPage = false) {
-    try {
-      if (!this.page) {
-        throw new Error('No active page');
-      }
-
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `screenshot_${timestamp}.png`;
-      const filepath = path.join(this.screenshotsDir, filename);
-      
-      let screenshot;
-      
-      if (selector) {
-        console.log(`📸 Taking screenshot of element: ${selector}`);
-        const element = await this.page.$(selector);
-        if (!element) {
-          throw new Error(`Element not found: ${selector}`);
+        if (!this.apiKey || !this.projectId) {
+            throw new Error('BROWSERBASE_API_KEY and BROWSERBASE_PROJECT_ID environment variables are required');
         }
-        screenshot = await element.screenshot({ path: filepath });
-      } else {
-        console.log(`📸 Taking screenshot${fullPage ? ' (full page)' : ''}`);
-        screenshot = await this.page.screenshot({ 
-          path: filepath,
-          fullPage: fullPage 
-        });
-      }
-      
-      this.sessionData.screenshots.push({
-        filename: filename,
-        filepath: filepath,
-        selector: selector,
-        fullPage: fullPage,
-        timestamp: new Date().toISOString()
-      });
-      
-      return {
-        filename: filename,
-        filepath: filepath,
-        success: true
-      };
-    } catch (error) {
-      console.error('Screenshot failed:', error);
-      
-      this.sessionData.actions.push({
-        type: 'screenshot',
-        selector: selector,
-        fullPage: fullPage,
-        timestamp: new Date().toISOString(),
-        success: false,
-        error: error.message
-      });
-      
-      throw error;
+
+        this.browserbaseApiUrl = 'https://www.browserbase.com/v1';
+        this.browserbaseHeaders = {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+        };
+
+        this.browser = null;
+        this.context = null;
+        this.page = null;
+        this.sessionId = null;
+        this.isConnected = false;
+        this.screenshotsDir = path.join(__dirname, '../../screenshots');
+        this.sessionData = {
+            startTime: null,
+            currentUrl: null,
+            pageTitle: null,
+            actions: [],
+            screenshots: [],
+            extractedData: []
+        };
+
+        this.options = {
+            timeout: parseInt(process.env.BROWSER_TIMEOUT) || 30000,
+            headless: process.env.BROWSER_HEADLESS === 'true',
+            viewport: {
+                width: parseInt(process.env.BROWSER_VIEWPORT_WIDTH) || 1920,
+                height: parseInt(process.env.BROWSER_VIEWPORT_HEIGHT) || 1080
+            },
+            ...options
+        };
+
+        this.eventListeners = new Map();
+        this.ensureScreenshotsDir();
     }
-  }
 
-  async extractData(selector = null, dataType = 'text') {
-    try {
-      if (!this.page) {
-        throw new Error('No active page');
-      }
-
-      console.log(`📊 Extracting ${dataType} data${selector ? ` from: ${selector}` : ''}`);
-      
-      let extractedData;
-      
-      if (selector) {
-        const elements = await this.page.$$(selector);
-        extractedData = await Promise.all(elements.map(async (element) => {
-          switch (dataType) {
-            case 'text':
-              return await element.textContent();
-            case 'html':
-              return await element.innerHTML();
-            case 'attributes':
-              return await element.evaluate(el => {
-                const attrs = {};
-                for (const attr of el.attributes) {
-                  attrs[attr.name] = attr.value;
-                }
-                return attrs;
-              });
-            case 'links':
-              return await element.evaluate(el => ({
-                text: el.textContent,
-                href: el.href || el.getAttribute('href')
-              }));
-            default:
-              return await element.textContent();
-          }
-        }));
-      } else {
-        // Extract from entire page
-        switch (dataType) {
-          case 'text':
-            extractedData = await this.page.textContent('body');
-            break;
-          case 'links':
-            extractedData = await this.page.$$eval('a', links => 
-              links.map(link => ({
-                text: link.textContent.trim(),
-                href: link.href
-              }))
-            );
-            break;
-          case 'images':
-            extractedData = await this.page.$$eval('img', images => 
-              images.map(img => ({
-                src: img.src,
-                alt: img.alt,
-                title: img.title
-              }))
-            );
-            break;
-          default:
-            extractedData = await this.page.textContent('body');
+    async ensureScreenshotsDir() {
+        try {
+            await fs.ensureDir(this.screenshotsDir);
+        } catch (error) {
+            console.error('❌ Failed to create screenshots directory:', error);
         }
-      }
-      
-      this.sessionData.extractedData.push({
-        selector: selector,
-        dataType: dataType,
-        data: extractedData,
-        timestamp: new Date().toISOString()
-      });
-      
-      return {
-        data: extractedData,
-        dataType: dataType,
-        selector: selector,
-        success: true
-      };
-    } catch (error) {
-      console.error('Data extraction failed:', error);
-      
-      this.sessionData.actions.push({
-        type: 'extract',
-        selector: selector,
-        dataType: dataType,
-        timestamp: new Date().toISOString(),
-        success: false,
-        error: error.message
-      });
-      
-      throw error;
     }
-  }
 
-  async wait(selector = null, timeout = 5000, condition = 'visible') {
-    try {
-      if (!this.page) {
-        throw new Error('No active page');
-      }
+    async createSession(options = {}) {
+        try {
+            console.log('🌐 Creating Browserbase session...');
+            
+            const sessionOptions = {
+                projectId: this.projectId,
+                ...options
+            };
 
-      console.log(`⏳ Waiting for ${condition}${selector ? `: ${selector}` : ''}`);
-      
-      if (selector) {
-        switch (condition) {
-          case 'visible':
-            await this.page.waitForSelector(selector, { state: 'visible', timeout });
-            break;
-          case 'hidden':
-            await this.page.waitForSelector(selector, { state: 'hidden', timeout });
-            break;
-          case 'attached':
-            await this.page.waitForSelector(selector, { state: 'attached', timeout });
-            break;
-          case 'detached':
-            await this.page.waitForSelector(selector, { state: 'detached', timeout });
-            break;
-          default:
+            const response = await axios.post(
+                `${this.browserbaseApiUrl}/sessions`,
+                sessionOptions,
+                { headers: this.browserbaseHeaders }
+            );
+            
+            this.sessionId = response.data.id;
+            
+            console.log(`✅ Browserbase session created: ${this.sessionId}`);
+            
+            // Connect Playwright to the Browserbase session
+            await this.connectPlaywright();
+            
+            return response.data;
+        } catch (error) {
+            console.error('❌ Failed to create Browserbase session:', error);
+            throw error;
+        }
+    }
+
+    async connectPlaywright() {
+        try {
+            if (!this.sessionId) {
+                throw new Error('No active session to connect to');
+            }
+
+            // Get the WebSocket URL for the session
+            const response = await axios.get(
+                `${this.browserbaseApiUrl}/sessions/${this.sessionId}`,
+                { headers: this.browserbaseHeaders }
+            );
+            
+            const wsEndpoint = response.data.wsEndpoint;
+
+            // Connect Playwright to the Browserbase session
+            this.browser = await chromium.connectOverCDP(wsEndpoint);
+            this.context = this.browser.contexts()[0] || await this.browser.newContext();
+            this.page = this.context.pages()[0] || await this.context.newPage();
+            
+            // Set viewport
+            await this.page.setViewportSize(this.options.viewport);
+            
+            this.isConnected = true;
+            this.sessionData.startTime = new Date();
+            
+            console.log('✅ Connected to Browserbase session with Playwright');
+            this.emit('session-connected', { sessionId: this.sessionId });
+            
+        } catch (error) {
+            console.error('❌ Failed to connect Playwright to Browserbase session:', error);
+            throw error;
+        }
+    }
+
+    async navigateTo(url) {
+        try {
+            if (!this.page) {
+                throw new Error('No active page');
+            }
+
+            console.log(`🌐 Navigating to: ${url}`);
+            
+            await this.page.goto(url, { 
+                waitUntil: 'networkidle',
+                timeout: this.options.timeout 
+            });
+            
+            const currentUrl = this.page.url();
+            const pageTitle = await this.page.title();
+            
+            this.sessionData.currentUrl = currentUrl;
+            this.sessionData.pageTitle = pageTitle;
+            this.sessionData.actions.push({
+                type: 'navigate',
+                url: url,
+                timestamp: Date.now()
+            });
+            
+            console.log(`✅ Navigated to: ${currentUrl}`);
+            this.emit('page-loaded', { url: currentUrl, title: pageTitle });
+            
+            return { url: currentUrl, title: pageTitle };
+            
+        } catch (error) {
+            console.error('❌ Failed to navigate:', error);
+            throw error;
+        }
+    }
+
+    async clickElement(selector, options = {}) {
+        try {
+            if (!this.page) {
+                throw new Error('No active page');
+            }
+
+            console.log(`🖱️ Clicking element: ${selector}`);
+            
+            await this.page.click(selector, options);
+            
+            this.sessionData.actions.push({
+                type: 'click',
+                selector: selector,
+                timestamp: Date.now()
+            });
+            
+            console.log(`✅ Clicked element: ${selector}`);
+            this.emit('action-completed', { type: 'click', selector });
+            
+            return { success: true, selector };
+            
+        } catch (error) {
+            console.error('❌ Failed to click element:', error);
+            throw error;
+        }
+    }
+
+    async fillField(selector, value) {
+        try {
+            if (!this.page) {
+                throw new Error('No active page');
+            }
+
+            console.log(`📝 Filling field: ${selector} with "${value}"`);
+            
+            await this.page.fill(selector, value);
+            
+            this.sessionData.actions.push({
+                type: 'fill',
+                selector: selector,
+                value: value,
+                timestamp: Date.now()
+            });
+            
+            console.log(`✅ Filled field: ${selector}`);
+            this.emit('action-completed', { type: 'fill', selector, value });
+            
+            return { success: true, selector, value };
+            
+        } catch (error) {
+            console.error('❌ Failed to fill field:', error);
+            throw error;
+        }
+    }
+
+    async searchFor(query, searchSelector = 'input[type="search"], input[name="q"], input[placeholder*="search" i]') {
+        try {
+            if (!this.page) {
+                throw new Error('No active page');
+            }
+
+            console.log(`🔍 Searching for: "${query}"`);
+            
+            // Try to find search input
+            const searchInput = await this.page.$(searchSelector);
+            if (!searchInput) {
+                throw new Error('No search input found');
+            }
+            
+            await this.page.fill(searchSelector, query);
+            await this.page.press(searchSelector, 'Enter');
+            
+            // Wait for search results
+            await this.page.waitForLoadState('networkidle');
+            
+            this.sessionData.actions.push({
+                type: 'search',
+                query: query,
+                timestamp: Date.now()
+            });
+            
+            console.log(`✅ Searched for: "${query}"`);
+            this.emit('action-completed', { type: 'search', query });
+            
+            return { success: true, query };
+            
+        } catch (error) {
+            console.error('❌ Failed to search:', error);
+            throw error;
+        }
+    }
+
+    async scrollPage(direction = 'down', amount = 500) {
+        try {
+            if (!this.page) {
+                throw new Error('No active page');
+            }
+
+            console.log(`📜 Scrolling ${direction} by ${amount}px`);
+            
+            if (direction === 'down') {
+                await this.page.evaluate((amount) => window.scrollBy(0, amount), amount);
+            } else if (direction === 'up') {
+                await this.page.evaluate((amount) => window.scrollBy(0, -amount), amount);
+            }
+            
+            this.sessionData.actions.push({
+                type: 'scroll',
+                direction: direction,
+                amount: amount,
+                timestamp: Date.now()
+            });
+            
+            console.log(`✅ Scrolled ${direction}`);
+            this.emit('action-completed', { type: 'scroll', direction, amount });
+            
+            return { success: true, direction, amount };
+            
+        } catch (error) {
+            console.error('❌ Failed to scroll:', error);
+            throw error;
+        }
+    }
+
+    async takeScreenshot(filename = null) {
+        try {
+            if (!this.page) {
+                throw new Error('No active page');
+            }
+
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const screenshotName = filename || `screenshot_${timestamp}.png`;
+            const screenshotPath = path.join(this.screenshotsDir, screenshotName);
+            
+            console.log('📸 Taking screenshot...');
+            
+            await this.page.screenshot({ 
+                path: screenshotPath,
+                fullPage: true 
+            });
+            
+            this.sessionData.screenshots.push({
+                path: screenshotPath,
+                timestamp: Date.now()
+            });
+            
+            console.log(`✅ Screenshot saved: ${screenshotPath}`);
+            this.emit('screenshot-taken', { path: screenshotPath });
+            
+            return screenshotPath;
+            
+        } catch (error) {
+            console.error('❌ Failed to take screenshot:', error);
+            throw error;
+        }
+    }
+
+    async extractPageData() {
+        try {
+            if (!this.page) {
+                throw new Error('No active page');
+            }
+
+            console.log('📊 Extracting page data...');
+            
+            const pageData = await this.page.evaluate(() => {
+                return {
+                    title: document.title,
+                    url: window.location.href,
+                    headings: Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => ({
+                        tag: h.tagName,
+                        text: h.textContent.trim(),
+                        level: parseInt(h.tagName.charAt(1))
+                    })),
+                    links: Array.from(document.querySelectorAll('a[href]')).map(a => ({
+                        text: a.textContent.trim(),
+                        href: a.href
+                    })),
+                    images: Array.from(document.querySelectorAll('img[src]')).map(img => ({
+                        src: img.src,
+                        alt: img.alt,
+                        title: img.title
+                    })),
+                    forms: Array.from(document.querySelectorAll('form')).map(form => ({
+                        action: form.action,
+                        method: form.method,
+                        inputs: Array.from(form.querySelectorAll('input, textarea, select')).map(input => ({
+                            type: input.type,
+                            name: input.name,
+                            placeholder: input.placeholder,
+                            required: input.required
+                        }))
+                    })),
+                    tables: Array.from(document.querySelectorAll('table')).map(table => {
+                        const rows = Array.from(table.querySelectorAll('tr'));
+                        return {
+                            headers: rows[0] ? Array.from(rows[0].querySelectorAll('th, td')).map(cell => cell.textContent.trim()) : [],
+                            rows: rows.slice(1).map(row => 
+                                Array.from(row.querySelectorAll('td')).map(cell => cell.textContent.trim())
+                            )
+                        };
+                    })
+                };
+            });
+            
+            this.sessionData.extractedData.push({
+                data: pageData,
+                timestamp: Date.now()
+            });
+            
+            console.log('✅ Page data extracted');
+            this.emit('data-extracted', { data: pageData });
+            
+            return pageData;
+            
+        } catch (error) {
+            console.error('❌ Failed to extract page data:', error);
+            throw error;
+        }
+    }
+
+    async waitForElement(selector, timeout = 10000) {
+        try {
+            if (!this.page) {
+                throw new Error('No active page');
+            }
+
+            console.log(`⏳ Waiting for element: ${selector}`);
+            
             await this.page.waitForSelector(selector, { timeout });
+            
+            console.log(`✅ Element found: ${selector}`);
+            return true;
+            
+        } catch (error) {
+            console.error(`❌ Element not found: ${selector}`, error);
+            throw error;
         }
-      } else {
-        await this.page.waitForTimeout(timeout);
-      }
-      
-      this.sessionData.actions.push({
-        type: 'wait',
-        selector: selector,
-        timeout: timeout,
-        condition: condition,
-        timestamp: new Date().toISOString(),
-        success: true
-      });
-      
-      return {
-        selector: selector,
-        timeout: timeout,
-        condition: condition,
-        success: true
-      };
-    } catch (error) {
-      console.error('Wait failed:', error);
-      
-      this.sessionData.actions.push({
-        type: 'wait',
-        selector: selector,
-        timeout: timeout,
-        condition: condition,
-        timestamp: new Date().toISOString(),
-        success: false,
-        error: error.message
-      });
-      
-      throw error;
     }
-  }
 
-  async getPageInfo() {
-    try {
-      if (!this.page) {
-        throw new Error('No active page');
-      }
+    async getElementText(selector) {
+        try {
+            if (!this.page) {
+                throw new Error('No active page');
+            }
 
-      const url = this.page.url();
-      const title = await this.page.title();
-      const viewport = this.page.viewportSize();
-      
-      // Get page elements for context
-      const elements = await this.page.$$eval('input, button, a, select, textarea', elements => 
-        elements.map(el => ({
-          tag: el.tagName.toLowerCase(),
-          type: el.type || null,
-          text: el.textContent?.trim() || null,
-          placeholder: el.placeholder || null,
-          id: el.id || null,
-          className: el.className || null
-        }))
-      );
-      
-      return {
-        url: url,
-        title: title,
-        viewport: viewport,
-        elements: elements,
-        sessionId: this.sessionId,
-        isConnected: this.isConnected
-      };
-    } catch (error) {
-      console.error('Failed to get page info:', error);
-      throw error;
+            const text = await this.page.textContent(selector);
+            console.log(`📄 Element text: ${text}`);
+            
+            return text;
+            
+        } catch (error) {
+            console.error('❌ Failed to get element text:', error);
+            throw error;
+        }
     }
-  }
 
-  async closeSession() {
-    try {
-      if (this.sessionId) {
-        await this.browserbase.sessions.delete(this.sessionId);
-        console.log(`🗑️ Browserbase session closed: ${this.sessionId}`);
-      }
-      
-      if (this.browser) {
-        await this.browser.close();
-      }
-      
-      this.isConnected = false;
-      this.sessionId = null;
-      this.browser = null;
-      this.context = null;
-      this.page = null;
-      
-    } catch (error) {
-      console.error('Failed to close session:', error);
-      throw error;
+    async closeSession() {
+        try {
+            if (this.page) {
+                await this.page.close();
+            }
+            
+            if (this.context) {
+                await this.context.close();
+            }
+            
+            if (this.browser) {
+                await this.browser.close();
+            }
+            
+            if (this.sessionId) {
+                await axios.delete(
+                    `${this.browserbaseApiUrl}/sessions/${this.sessionId}`,
+                    { headers: this.browserbaseHeaders }
+                );
+            }
+            
+            this.isConnected = false;
+            this.sessionId = null;
+            this.page = null;
+            this.context = null;
+            this.browser = null;
+            
+            console.log('✅ Browser session closed');
+            this.emit('session-closed');
+            
+        } catch (error) {
+            console.error('❌ Failed to close session:', error);
+            throw error;
+        }
     }
-  }
 
-  getSessionData() {
-    return {
-      ...this.sessionData,
-      sessionId: this.sessionId,
-      isConnected: this.isConnected,
-      endTime: new Date().toISOString()
-    };
-  }
+    getStatus() {
+        return {
+            isConnected: this.isConnected,
+            sessionId: this.sessionId,
+            currentUrl: this.sessionData.currentUrl,
+            pageTitle: this.sessionData.pageTitle,
+            actionsCount: this.sessionData.actions.length,
+            screenshotsCount: this.sessionData.screenshots.length,
+            extractedDataCount: this.sessionData.extractedData.length
+        };
+    }
+
+    getSessionData() {
+        return this.sessionData;
+    }
+
+    on(event, callback) {
+        if (!this.eventListeners.has(event)) {
+            this.eventListeners.set(event, []);
+        }
+        this.eventListeners.get(event).push(callback);
+    }
+
+    off(event, callback) {
+        if (this.eventListeners.has(event)) {
+            const listeners = this.eventListeners.get(event);
+            const index = listeners.indexOf(callback);
+            if (index > -1) {
+                listeners.splice(index, 1);
+            }
+        }
+    }
+
+    emit(event, ...args) {
+        if (this.eventListeners.has(event)) {
+            this.eventListeners.get(event).forEach(callback => {
+                try {
+                    callback(...args);
+                } catch (error) {
+                    console.error(`❌ Error in event listener for ${event}:`, error);
+                }
+            });
+        }
+    }
 }
-
-export default BrowserController;
