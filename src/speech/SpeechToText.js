@@ -1,9 +1,11 @@
 import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk';
 import fs from 'fs-extra';
 import path from 'path';
+import { EventEmitter } from 'events';
 
-class SpeechToText {
+class SpeechToText extends EventEmitter {
   constructor(options = {}) {
+    super();
     this.apiKey = process.env.DEEPGRAM_API_KEY;
     if (!this.apiKey) {
       throw new Error('DEEPGRAM_API_KEY environment variable is required');

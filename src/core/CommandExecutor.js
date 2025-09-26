@@ -1,9 +1,11 @@
 import BrowserController from '../browser/BrowserController.js';
 import ContextManager from '../context/ContextManager.js';
 import ErrorHandler from '../utils/ErrorHandler.js';
+import { EventEmitter } from 'events';
 
-class CommandExecutor {
+class CommandExecutor extends EventEmitter {
   constructor(options = {}) {
+    super();
     this.browserController = options.browserController || new BrowserController();
     this.contextManager = options.contextManager || new ContextManager();
     this.errorHandler = options.errorHandler || new ErrorHandler();

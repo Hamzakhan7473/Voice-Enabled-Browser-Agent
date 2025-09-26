@@ -2,254 +2,418 @@ import { spawn } from 'child_process';
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-class AudioCapture {
-  constructor(options = {}) {
-    this.isRecording = false;
-    this.recordingProcess = null;
-    this.audioBuffer = [];
-    this.sampleRate = options.sampleRate || process.env.AUDIO_SAMPLE_RATE || 16000;
-    this.channels = options.channels || process.env.AUDIO_CHANNELS || 1;
-    this.bitDepth = options.bitDepth || process.env.AUDIO_BIT_DEPTH || 16;
-    this.tempDir = path.join(__dirname, '../../temp');
-    this.ensureTempDir();
-  }
-
-  async ensureTempDir() {
-    try {
-      await fs.ensureDir(this.tempDir);
-    } catch (error) {
-      console.error('Failed to create temp directory:', error);
-    }
-  }
-
-  async startRecording() {
-    if (this.isRecording) {
-      throw new Error('Already recording');
+export class AudioCapture {
+    constructor(options = {}) {
+        this.isRecording = false;
+        this.audioStream = null;
+        this.recordingProcess = null;
+        this.deepgramClient = null;
+        this.liveConnection = null;
+        this.options = {
+            sampleRate: 16000,
+            channels: 1,
+            bitDepth: 16,
+            format: 'wav',
+            ...options
+        };
+        this.eventListeners = new Map();
+        this.audioBuffer = [];
+        this.isStreaming = false;
+        this.tempDir = path.join(__dirname, '../../temp');
+        this.ensureTempDir();
     }
 
-    return new Promise((resolve, reject) => {
-      try {
-        // Use system audio capture (works on macOS, Linux, Windows with appropriate tools)
-        const command = this.getAudioCaptureCommand();
-        
-        this.recordingProcess = spawn(command.program, command.args);
-        
-        this.recordingProcess.stdout.on('data', (data) => {
-          this.audioBuffer.push(data);
+    /**
+     * Initialize Deepgram client for real-time streaming
+     */
+    async initializeDeepgram(apiKey) {
+        try {
+            this.deepgramClient = createClient(apiKey);
+            console.log('✅ Deepgram client initialized successfully');
+        } catch (error) {
+            console.error('❌ Failed to initialize Deepgram client:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Start capturing audio from the microphone with real-time streaming
+     */
+    async startCapture() {
+        if (this.isRecording) {
+            throw new Error('Audio capture is already running');
+        }
+
+        try {
+            this.isRecording = true;
+            this.emit('capture-started');
+            
+            // Start platform-specific audio capture
+            await this.startPlatformCapture();
+            
+            // Initialize real-time streaming to Deepgram
+            if (this.deepgramClient) {
+                await this.startLiveTranscription();
+            }
+            
+        } catch (error) {
+            this.isRecording = false;
+            this.emit('error', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Start live transcription with Deepgram
+     */
+    async startLiveTranscription() {
+        if (!this.deepgramClient) {
+            throw new Error('Deepgram client not initialized');
+        }
+
+        try {
+            // Create live transcription connection
+            this.liveConnection = this.deepgramClient.listen.live({
+                model: "nova-2",
+                language: "en-US",
+                smart_format: true,
+                interim_results: true,
+                endpointing: 300,
+                vad_events: true,
+                encoding: "linear16",
+                sample_rate: this.options.sampleRate,
+                channels: this.options.channels
+            });
+
+            // Set up event listeners for live transcription
+            this.setupLiveTranscriptionEvents();
+            
+            console.log('🎙️ Live transcription started');
+            
+        } catch (error) {
+            console.error('❌ Failed to start live transcription:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Set up event listeners for live transcription
+     */
+    setupLiveTranscriptionEvents() {
+        this.liveConnection.on(LiveTranscriptionEvents.Open, () => {
+            console.log('🔗 Live transcription connection opened');
+            this.emit('transcription-connected');
         });
 
-        this.recordingProcess.stderr.on('data', (data) => {
-          console.error('Audio capture error:', data.toString());
+        this.liveConnection.on(LiveTranscriptionEvents.Close, () => {
+            console.log('🔌 Live transcription connection closed');
+            this.emit('transcription-disconnected');
+        });
+
+        this.liveConnection.on(LiveTranscriptionEvents.Transcript, (data) => {
+            const transcript = data.channel.alternatives[0].transcript;
+            const confidence = data.channel.alternatives[0].confidence;
+            const isFinal = data.is_final;
+            
+            console.log(`📝 Transcript (${isFinal ? 'FINAL' : 'INTERIM'}): ${transcript}`);
+            
+            this.emit('transcript', {
+                text: transcript,
+                confidence: confidence,
+                isFinal: isFinal,
+                timestamp: Date.now(),
+                words: data.channel.alternatives[0].words || []
+            });
+        });
+
+        this.liveConnection.on(LiveTranscriptionEvents.Metadata, (data) => {
+            console.log('📊 Transcription metadata:', data);
+            this.emit('metadata', data);
+        });
+
+        this.liveConnection.on(LiveTranscriptionEvents.Error, (error) => {
+            console.error('❌ Live transcription error:', error);
+            this.emit('transcription-error', error);
+        });
+
+        this.liveConnection.on(LiveTranscriptionEvents.Warning, (warning) => {
+            console.warn('⚠️ Live transcription warning:', warning);
+            this.emit('transcription-warning', warning);
+        });
+
+        this.liveConnection.on(LiveTranscriptionEvents.UtteranceEnd, (data) => {
+            console.log('🔚 Utterance ended:', data);
+            this.emit('utterance-end', data);
+        });
+    }
+
+    /**
+     * Send audio data to Deepgram for real-time transcription
+     */
+    sendAudioData(audioData) {
+        if (this.liveConnection && this.isRecording) {
+            try {
+                this.liveConnection.send(audioData);
+            } catch (error) {
+                console.error('❌ Failed to send audio data:', error);
+                this.emit('error', error);
+            }
+        }
+    }
+
+    /**
+     * Stop capturing audio
+     */
+    async stopCapture() {
+        if (!this.isRecording) {
+            return;
+        }
+
+        try {
+            this.isRecording = false;
+            
+            // Close live transcription connection
+            if (this.liveConnection) {
+                this.liveConnection.finish();
+                this.liveConnection = null;
+            }
+            
+            // Stop platform-specific audio capture
+            if (this.recordingProcess) {
+                this.recordingProcess.kill();
+                this.recordingProcess = null;
+            }
+
+            this.emit('capture-stopped');
+        } catch (error) {
+            this.emit('error', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Start platform-specific audio capture with streaming
+     */
+    async startPlatformCapture() {
+        const platform = process.platform;
+        
+        switch (platform) {
+            case 'darwin': // macOS
+                await this.startMacOSCapture();
+                break;
+            case 'win32': // Windows
+                await this.startWindowsCapture();
+                break;
+            case 'linux': // Linux
+                await this.startLinuxCapture();
+                break;
+            default:
+                throw new Error(`Unsupported platform: ${platform}`);
+        }
+    }
+
+    /**
+     * Start audio capture on macOS with real-time streaming
+     */
+    async startMacOSCapture() {
+        // Use sox for macOS audio capture with real-time streaming
+        this.recordingProcess = spawn('rec', [
+            '-r', this.options.sampleRate.toString(),
+            '-c', this.options.channels.toString(),
+            '-b', this.options.bitDepth.toString(),
+            '-t', 'raw', // Raw audio data for streaming
+            '-' // Output to stdout
+        ]);
+
+        this.recordingProcess.stdout.on('data', (chunk) => {
+            this.sendAudioData(chunk);
+            this.audioBuffer.push(chunk);
         });
 
         this.recordingProcess.on('error', (error) => {
-          console.error('Failed to start audio capture:', error);
-          reject(error);
+            this.emit('error', new Error(`macOS audio capture failed: ${error.message}`));
         });
 
-        this.recordingProcess.on('spawn', () => {
-          this.isRecording = true;
-          console.log('🎤 Audio recording started');
-          resolve();
+        this.recordingProcess.on('exit', (code) => {
+            if (code !== 0) {
+                this.emit('error', new Error(`Audio capture process exited with code ${code}`));
+            }
         });
-
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-
-  async stopRecording() {
-    if (!this.isRecording) {
-      throw new Error('Not currently recording');
     }
 
-    return new Promise((resolve, reject) => {
-      try {
-        if (this.recordingProcess) {
-          this.recordingProcess.kill('SIGTERM');
-          
-          this.recordingProcess.on('exit', () => {
-            this.isRecording = false;
-            this.recordingProcess = null;
-            console.log('🎤 Audio recording stopped');
-            resolve();
-          });
-        } else {
-          this.isRecording = false;
-          resolve();
-        }
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-
-  async getAudioData() {
-    if (this.audioBuffer.length === 0) {
-      return null;
+    /**
+     * Start audio capture on Windows with real-time streaming
+     */
+    async startWindowsCapture() {
+        // Use PowerShell with Windows Audio Session API for real-time capture
+        const psCommand = `
+            Add-Type -AssemblyName System.Speech
+            $audioFormat = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
+            # Additional Windows-specific real-time audio capture logic
+        `;
+        
+        this.recordingProcess = spawn('powershell', ['-Command', psCommand]);
+        
+        this.recordingProcess.stdout.on('data', (chunk) => {
+            this.sendAudioData(chunk);
+            this.audioBuffer.push(chunk);
+        });
+        
+        this.recordingProcess.on('error', (error) => {
+            this.emit('error', new Error(`Windows audio capture failed: ${error.message}`));
+        });
     }
 
-    const audioData = Buffer.concat(this.audioBuffer);
-    this.audioBuffer = []; // Clear buffer after reading
-    
-    return audioData;
-  }
-
-  async saveAudioToFile(audioData, filename = null) {
-    if (!audioData) {
-      throw new Error('No audio data to save');
-    }
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const audioFilename = filename || `audio_${timestamp}.wav`;
-    const filePath = path.join(this.tempDir, audioFilename);
-
-    try {
-      await fs.writeFile(filePath, audioData);
-      console.log(`💾 Audio saved to: ${filePath}`);
-      return filePath;
-    } catch (error) {
-      console.error('Failed to save audio file:', error);
-      throw error;
-    }
-  }
-
-  getAudioCaptureCommand() {
-    const platform = process.platform;
-    
-    switch (platform) {
-      case 'darwin': // macOS
-        return {
-          program: 'rec',
-          args: [
-            '-r', this.sampleRate.toString(),
-            '-c', this.channels.toString(),
-            '-b', this.bitDepth.toString(),
-            '-t', 'wav',
-            '-'
-          ]
-        };
-      
-      case 'linux':
-        return {
-          program: 'arecord',
-          args: [
+    /**
+     * Start audio capture on Linux with real-time streaming
+     */
+    async startLinuxCapture() {
+        // Use arecord for Linux audio capture with real-time streaming
+        this.recordingProcess = spawn('arecord', [
             '-f', 'S16_LE',
-            '-r', this.sampleRate.toString(),
-            '-c', this.channels.toString(),
-            '-D', 'default'
-          ]
-        };
-      
-      case 'win32':
+            '-r', this.options.sampleRate.toString(),
+            '-c', this.options.channels.toString(),
+            '-' // Output to stdout
+        ]);
+
+        this.recordingProcess.stdout.on('data', (chunk) => {
+            this.sendAudioData(chunk);
+            this.audioBuffer.push(chunk);
+        });
+
+        this.recordingProcess.on('error', (error) => {
+            this.emit('error', new Error(`Linux audio capture failed: ${error.message}`));
+        });
+    }
+
+    /**
+     * Get current recording status
+     */
+    getStatus() {
         return {
-          program: 'powershell',
-          args: [
-            '-Command',
-            `Add-Type -AssemblyName System.Speech; $rec = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo([System.Speech.AudioFormat.EncodingFormat]::Pcm, ${this.sampleRate}, ${this.bitDepth}, ${this.channels}, ${this.sampleRate}, ${this.channels}, null); $rec.`
-          ]
+            isRecording: this.isRecording,
+            isStreaming: this.isStreaming,
+            options: this.options,
+            platform: process.platform,
+            hasDeepgramConnection: !!this.liveConnection
         };
-      
-      default:
-        throw new Error(`Unsupported platform: ${platform}`);
-    }
-  }
-
-  // Alternative method using Web Audio API (for browser-based capture)
-  async startWebAudioCapture(stream) {
-    if (this.isRecording) {
-      throw new Error('Already recording');
     }
 
-    try {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioContext.createMediaStreamSource(stream);
-      const processor = audioContext.createScriptProcessor(4096, this.channels, this.channels);
-      
-      processor.onaudioprocess = (event) => {
-        const inputBuffer = event.inputBuffer;
-        const audioData = new Float32Array(inputBuffer.length * this.channels);
-        
-        for (let channel = 0; channel < this.channels; channel++) {
-          const channelData = inputBuffer.getChannelData(channel);
-          for (let i = 0; i < channelData.length; i++) {
-            audioData[i * this.channels + channel] = channelData[i];
-          }
+    /**
+     * Get audio data from buffer
+     */
+    async getAudioData() {
+        if (this.audioBuffer.length === 0) {
+            return null;
         }
+
+        const audioData = Buffer.concat(this.audioBuffer);
+        this.audioBuffer = []; // Clear buffer after reading
         
-        // Convert float32 to int16
-        const int16Data = new Int16Array(audioData.length);
-        for (let i = 0; i < audioData.length; i++) {
-          int16Data[i] = Math.max(-32768, Math.min(32767, audioData[i] * 32768));
+        return audioData;
+    }
+
+    /**
+     * Save audio data to file
+     */
+    async saveAudioToFile(audioData, filename = null) {
+        if (!audioData) {
+            throw new Error('No audio data to save');
         }
-        
-        this.audioBuffer.push(Buffer.from(int16Data.buffer));
-      };
-      
-      source.connect(processor);
-      processor.connect(audioContext.destination);
-      
-      this.isRecording = true;
-      this.audioContext = audioContext;
-      this.processor = processor;
-      
-      console.log('🎤 Web audio recording started');
-    } catch (error) {
-      console.error('Failed to start web audio capture:', error);
-      throw error;
-    }
-  }
 
-  async stopWebAudioCapture() {
-    if (!this.isRecording) {
-      throw new Error('Not currently recording');
-    }
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const audioFilename = filename || `audio_${timestamp}.wav`;
+        const filePath = path.join(this.tempDir, audioFilename);
 
-    try {
-      if (this.processor) {
-        this.processor.disconnect();
-        this.processor = null;
-      }
-      
-      if (this.audioContext) {
-        await this.audioContext.close();
-        this.audioContext = null;
-      }
-      
-      this.isRecording = false;
-      console.log('🎤 Web audio recording stopped');
-    } catch (error) {
-      console.error('Failed to stop web audio capture:', error);
-      throw error;
-    }
-  }
-
-  // Clean up temporary files
-  async cleanup() {
-    try {
-      const files = await fs.readdir(this.tempDir);
-      const audioFiles = files.filter(file => file.startsWith('audio_') && file.endsWith('.wav'));
-      
-      for (const file of audioFiles) {
-        const filePath = path.join(this.tempDir, file);
-        const stats = await fs.stat(filePath);
-        const ageInHours = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60);
-        
-        // Delete files older than 1 hour
-        if (ageInHours > 1) {
-          await fs.unlink(filePath);
-          console.log(`🗑️ Cleaned up old audio file: ${file}`);
+        try {
+            await fs.writeFile(filePath, audioData);
+            console.log(`💾 Audio saved to: ${filePath}`);
+            return filePath;
+        } catch (error) {
+            console.error('❌ Failed to save audio file:', error);
+            throw error;
         }
-      }
-    } catch (error) {
-      console.error('Failed to cleanup audio files:', error);
     }
-  }
+
+    /**
+     * Ensure temp directory exists
+     */
+    async ensureTempDir() {
+        try {
+            await fs.ensureDir(this.tempDir);
+        } catch (error) {
+            console.error('❌ Failed to create temp directory:', error);
+        }
+    }
+
+    /**
+     * Add event listener
+     */
+    on(event, callback) {
+        if (!this.eventListeners.has(event)) {
+            this.eventListeners.set(event, []);
+        }
+        this.eventListeners.get(event).push(callback);
+    }
+
+    /**
+     * Remove event listener
+     */
+    off(event, callback) {
+        if (this.eventListeners.has(event)) {
+            const listeners = this.eventListeners.get(event);
+            const index = listeners.indexOf(callback);
+            if (index > -1) {
+                listeners.splice(index, 1);
+            }
+        }
+    }
+
+    /**
+     * Emit event to all listeners
+     */
+    emit(event, ...args) {
+        if (this.eventListeners.has(event)) {
+            this.eventListeners.get(event).forEach(callback => {
+                try {
+                    callback(...args);
+                } catch (error) {
+                    console.error(`❌ Error in event listener for ${event}:`, error);
+                }
+            });
+        }
+    }
+
+    /**
+     * Clean up resources
+     */
+    async cleanup() {
+        await this.stopCapture();
+        this.eventListeners.clear();
+        
+        // Clean up old audio files
+        try {
+            const files = await fs.readdir(this.tempDir);
+            const audioFiles = files.filter(file => file.startsWith('audio_') && file.endsWith('.wav'));
+            
+            for (const file of audioFiles) {
+                const filePath = path.join(this.tempDir, file);
+                const stats = await fs.stat(filePath);
+                const ageInHours = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60);
+                
+                // Delete files older than 1 hour
+                if (ageInHours > 1) {
+                    await fs.unlink(filePath);
+                    console.log(`🗑️ Cleaned up old audio file: ${file}`);
+                }
+            }
+        } catch (error) {
+            console.error('❌ Failed to cleanup audio files:', error);
+        }
+    }
 }
-
-export default AudioCapture;
