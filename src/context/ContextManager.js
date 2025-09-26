@@ -1,12 +1,14 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { EventEmitter } from 'events';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-class ContextManager {
+class ContextManager extends EventEmitter {
   constructor(options = {}) {
+    super();
     this.sessionId = options.sessionId || this.generateSessionId();
     this.contextData = {
       sessionId: this.sessionId,
@@ -143,6 +145,35 @@ class ContextManager {
     
     if (this.contextData.errorHistory.length > maxInteractions) {
       this.contextData.errorHistory = this.contextData.errorHistory.slice(-maxInteractions);
+    }
+  }
+
+  getContext() {
+    return this.getContextForIntentParsing();
+  }
+
+  addInteraction(interaction) {
+    try {
+      // Add to conversation history
+      this.contextData.conversationHistory.push({
+        timestamp: new Date().toISOString(),
+        transcript: interaction.transcript,
+        intent: interaction.intent,
+        timestamp_ms: interaction.timestamp
+      });
+
+      // Keep only the last contextWindow interactions
+      if (this.contextData.conversationHistory.length > this.contextData.contextWindow) {
+        this.contextData.conversationHistory = this.contextData.conversationHistory.slice(-this.contextData.contextWindow);
+      }
+
+      // Emit event for other components
+      this.emit('interaction-added', interaction);
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to add interaction:', error);
+      return false;
     }
   }
 

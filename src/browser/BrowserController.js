@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export class BrowserController {
+class BrowserController {
     constructor(options = {}) {
         this.apiKey = process.env.BROWSERBASE_API_KEY;
         this.projectId = process.env.BROWSERBASE_PROJECT_ID;
@@ -16,7 +16,7 @@ export class BrowserController {
             throw new Error('BROWSERBASE_API_KEY and BROWSERBASE_PROJECT_ID environment variables are required');
         }
 
-        this.browserbaseApiUrl = 'https://www.browserbase.com/v1';
+        this.browserbaseApiUrl = 'https://api.browserbase.com/v1';
         this.browserbaseHeaders = {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json'
@@ -74,7 +74,9 @@ export class BrowserController {
                 { headers: this.browserbaseHeaders }
             );
             
-            this.sessionId = response.data.id;
+            console.log('🔍 Browserbase API Response:', JSON.stringify(response.data, null, 2));
+            
+            this.sessionId = response.data.id || response.data.sessionId || response.data.session?.id;
             
             console.log(`✅ Browserbase session created: ${this.sessionId}`);
             
@@ -84,6 +86,42 @@ export class BrowserController {
             return response.data;
         } catch (error) {
             console.error('❌ Failed to create Browserbase session:', error);
+            
+            // Fallback to local Playwright if Browserbase fails
+            if (error.response?.status === 401) {
+                console.log('🔄 Falling back to local Playwright browser...');
+                return await this.createLocalSession();
+            }
+            
+            throw error;
+        }
+    }
+
+    async createLocalSession(options = {}) {
+        try {
+            console.log('🌐 Creating local Playwright session...');
+            
+            // Create a local browser instance
+            this.browser = await chromium.launch({
+                headless: this.options.headless,
+                args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+            
+            this.context = await this.browser.newContext({
+                viewport: this.options.viewport
+            });
+            
+            this.page = await this.context.newPage();
+            
+            // Generate a mock session ID
+            this.sessionId = `local_${Date.now()}`;
+            this.isConnected = true;
+            
+            console.log(`✅ Local Playwright session created: ${this.sessionId}`);
+            
+            return { id: this.sessionId, type: 'local' };
+        } catch (error) {
+            console.error('❌ Failed to create local session:', error);
             throw error;
         }
     }
@@ -495,3 +533,5 @@ export class BrowserController {
         }
     }
 }
+
+export default BrowserController;

@@ -33,7 +33,7 @@ class VoiceEnabledBrowserAgent {
             }
         });
         
-        this.port = process.env.PORT || 3000;
+        this.port = process.env.PORT || 3001;
         this.isInitialized = false;
         
         // Initialize components
@@ -138,7 +138,12 @@ class VoiceEnabledBrowserAgent {
      */
     setupMiddleware() {
         this.app.use(express.json());
-        this.app.use(express.static(path.join(__dirname, '../../public')));
+        this.app.use(express.static(path.join(__dirname, '../public')));
+        
+        // Serve index.html for root route
+        this.app.get('/', (req, res) => {
+            res.sendFile(path.join(__dirname, '../public/index.html'));
+        });
         
         // CORS middleware
         this.app.use((req, res, next) => {
@@ -228,6 +233,14 @@ class VoiceEnabledBrowserAgent {
                 try {
                     await this.startListening();
                     socket.emit('listening-started', { timestamp: Date.now() });
+                    
+                    // Send Jarvis-style greeting
+                    const greeting = this.generateGreeting();
+                    socket.emit('agent-greeting', { 
+                        message: greeting.message,
+                        audio: greeting.audio,
+                        timestamp: Date.now() 
+                    });
                 } catch (error) {
                     socket.emit('error', { message: error.message });
                 }
@@ -237,6 +250,29 @@ class VoiceEnabledBrowserAgent {
                 try {
                     await this.stopListening();
                     socket.emit('listening-stopped', { timestamp: Date.now() });
+                } catch (error) {
+                    socket.emit('error', { message: error.message });
+                }
+            });
+
+            socket.on('confirmation-response', async (data) => {
+                try {
+                    if (this.currentConfirmation) {
+                        this.currentConfirmation.resolve(data.confirmed);
+                        this.currentConfirmation = null;
+                    }
+                } catch (error) {
+                    socket.emit('error', { message: error.message });
+                }
+            });
+
+            socket.on('initialize-browser', async () => {
+                try {
+                    await this.browserController.createSession();
+                    socket.emit('browser-initialized', { 
+                        sessionId: this.browserController.sessionId,
+                        timestamp: Date.now() 
+                    });
                 } catch (error) {
                     socket.emit('error', { message: error.message });
                 }
@@ -326,6 +362,30 @@ class VoiceEnabledBrowserAgent {
         this.feedbackSystem.on('feedback-generated', (data) => {
             this.io.emit('feedback-generated', data);
         });
+    }
+
+    /**
+     * Generate Jarvis-style greeting
+     */
+    generateGreeting() {
+        const greetings = [
+            "Hello! I'm your voice-enabled browser assistant. How may I help you today?",
+            "Good day! I'm ready to assist you with browser automation. What would you like me to do?",
+            "Hello there! I'm your AI browser agent. Please tell me what you'd like me to help you with.",
+            "Hi! I'm here to help you navigate and automate your browser. What can I do for you?",
+            "Greetings! I'm your voice-controlled browser assistant. How can I assist you today?",
+            "Hello! I'm ready to help you with browser tasks. What would you like me to do?",
+            "Good to see you! I'm your AI browser agent. Please let me know what you need help with.",
+            "Hi there! I'm here to automate your browser tasks. What can I help you with today?"
+        ];
+        
+        const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+        
+        return {
+            message: randomGreeting,
+            audio: null, // Could be enhanced with TTS audio file
+            type: 'greeting'
+        };
     }
 
     /**

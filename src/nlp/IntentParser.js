@@ -11,7 +11,7 @@ class IntentParser {
       apiKey: this.apiKey
     });
 
-    this.model = options.model || 'gpt-4';
+    this.model = options.model || 'gpt-4o';
     this.maxTokens = options.maxTokens || 500;
     this.temperature = options.temperature || 0.1;
 
@@ -120,8 +120,7 @@ class IntentParser {
           { role: 'user', content: userPrompt }
         ],
         max_tokens: this.maxTokens,
-        temperature: this.temperature,
-        response_format: { type: 'json_object' }
+        temperature: this.temperature
       });
 
       const parsedIntent = JSON.parse(response.choices[0].message.content);
@@ -295,8 +294,7 @@ Respond with the same JSON format as before, but consider how this command relat
           { role: 'user', content: transcript }
         ],
         max_tokens: this.maxTokens,
-        temperature: this.temperature,
-        response_format: { type: 'json_object' }
+        temperature: this.temperature
       });
 
       const parsedIntent = JSON.parse(response.choices[0].message.content);
