@@ -3,12 +3,14 @@ import { chromium } from 'playwright';
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { EventEmitter } from 'events';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-class BrowserController {
+class BrowserController extends EventEmitter {
     constructor(options = {}) {
+        super();
         this.apiKey = process.env.BROWSERBASE_API_KEY;
         this.projectId = process.env.BROWSERBASE_PROJECT_ID;
         
@@ -48,120 +50,198 @@ class BrowserController {
         };
 
         this.eventListeners = new Map();
-        this.ensureScreenshotsDir();
+        this.retryCount = 0;
+        this.maxRetries = 3;
     }
 
-    async ensureScreenshotsDir() {
-        try {
-            await fs.ensureDir(this.screenshotsDir);
-        } catch (error) {
-            console.error('❌ Failed to create screenshots directory:', error);
+    // Enhanced session management
+    async ensureSession() {
+        if (!this.isConnected || !this.page || this.page.isClosed()) {
+            console.log('🔄 Session lost, recreating...');
+            await this.createLocalSession();
         }
     }
 
-    async createSession(options = {}) {
+    // Enhanced searchFor with better error handling
+    async searchFor(query, searchSelector = null) {
         try {
-            console.log('🌐 Creating Browserbase session...');
+            await this.ensureSession();
             
-            const sessionOptions = {
-                projectId: this.projectId,
-                ...options
+            if (!this.page) {
+                throw new Error('No active page');
+            }
+
+            console.log(`🔍 Searching for: "${query}"`);
+            
+            // Navigate to Google if not already there
+            const currentUrl = this.page.url();
+            if (!currentUrl.includes('google.com')) {
+                console.log('🌐 Navigating to Google for search...');
+                await this.navigateTo('https://www.google.com');
+            }
+
+            // Wait for page to be ready
+            await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 });
+            
+            // Enhanced selector strategy
+            const selectors = [
+                'textarea[name="q"]', // Primary Google search
+                'input[name="q"]',
+                'input[aria-label*="Search"]',
+                'input[placeholder*="Search"]',
+                'input[type="search"]',
+                'textarea[aria-label*="Search"]',
+                'input[role="searchbox"]',
+                'textarea[role="searchbox"]'
+            ];
+
+            let usedSelector = null;
+            for (const selector of selectors) {
+                try {
+                    await this.page.waitForSelector(selector, { timeout: 2000 });
+                    usedSelector = selector;
+                    console.log(`✅ Found search input: ${selector}`);
+                    break;
+                } catch (error) {
+                    console.log(`❌ Selector not found: ${selector}`);
+                    continue;
+                }
+            }
+
+            if (!usedSelector) {
+                throw new Error('No search input found on page');
+            }
+
+            // Clear existing text and type new query
+            await this.page.fill(usedSelector, '');
+            await this.page.waitForTimeout(100);
+            await this.page.type(usedSelector, query, { delay: 30 });
+            
+            // Press Enter
+            await this.page.press(usedSelector, 'Enter');
+            
+            // Wait for results
+            await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 });
+            
+            // Check for CAPTCHA
+            const captchaResult = await this.handleCaptcha();
+            if (!captchaResult.success) {
+                throw new Error(`CAPTCHA detected: ${captchaResult.message}`);
+            }
+
+            // Update session data
+            this.sessionData.currentUrl = this.page.url();
+            this.sessionData.pageTitle = await this.page.title();
+            this.sessionData.actions.push({
+                type: 'search',
+                query: query,
+                timestamp: Date.now(),
+                url: this.sessionData.currentUrl
+            });
+
+            console.log(`✅ Search completed: ${this.sessionData.currentUrl}`);
+            
+            return {
+                success: true,
+                query: query,
+                url: this.sessionData.currentUrl,
+                title: this.sessionData.pageTitle
             };
 
-            const response = await axios.post(
-                `${this.browserbaseApiUrl}/sessions`,
-                sessionOptions,
-                { headers: this.browserbaseHeaders }
-            );
-            
-            console.log('🔍 Browserbase API Response:', JSON.stringify(response.data, null, 2));
-            
-            this.sessionId = response.data.id || response.data.sessionId || response.data.session?.id;
-            
-            console.log(`✅ Browserbase session created: ${this.sessionId}`);
-            
-            // Connect Playwright to the Browserbase session
-            await this.connectPlaywright();
-            
-            return response.data;
         } catch (error) {
-            console.error('❌ Failed to create Browserbase session:', error);
+            console.error('❌ Search failed:', error);
             
-            // Fallback to local Playwright if Browserbase fails
-            if (error.response?.status === 401) {
-                console.log('🔄 Falling back to local Playwright browser...');
-                return await this.createLocalSession();
+            // Retry logic
+            if (this.retryCount < this.maxRetries) {
+                this.retryCount++;
+                console.log(`🔄 Retrying search (attempt ${this.retryCount}/${this.maxRetries})...`);
+                await this.page.waitForTimeout(2000);
+                return await this.searchFor(query, searchSelector);
             }
             
             throw error;
         }
     }
 
-    async createLocalSession(options = {}) {
+    // Enhanced CAPTCHA detection
+    async detectCaptcha() {
         try {
-            console.log('🌐 Creating local Playwright session...');
-            
-            // Create a local browser instance
-            this.browser = await chromium.launch({
-                headless: this.options.headless,
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
-            });
-            
-            this.context = await this.browser.newContext({
-                viewport: this.options.viewport
-            });
-            
-            this.page = await this.context.newPage();
-            
-            // Generate a mock session ID
-            this.sessionId = `local_${Date.now()}`;
-            this.isConnected = true;
-            
-            console.log(`✅ Local Playwright session created: ${this.sessionId}`);
-            
-            return { id: this.sessionId, type: 'local' };
-        } catch (error) {
-            console.error('❌ Failed to create local session:', error);
-            throw error;
-        }
-    }
+            const captchaSelectors = [
+                'iframe[src*="recaptcha"]',
+                'div[class*="recaptcha"]',
+                'div[id*="recaptcha"]',
+                '.g-recaptcha',
+                '#g-recaptcha',
+                '[data-sitekey]',
+                'iframe[src*="hcaptcha"]',
+                'div[class*="hcaptcha"]',
+                'div[id*="hcaptcha"]',
+                '.h-captcha',
+                '#h-captcha',
+                'div[class*="captcha"]',
+                'div[id*="captcha"]',
+                'img[alt*="captcha"]',
+                'img[src*="captcha"]',
+                'input[placeholder*="captcha"]',
+                'input[name*="captcha"]',
+                'div[class*="cf-challenge"]',
+                'div[id*="cf-challenge"]',
+                '.cf-browser-verification',
+                'iframe[src*="challenges.cloudflare.com"]'
+            ];
 
-    async connectPlaywright() {
-        try {
-            if (!this.sessionId) {
-                throw new Error('No active session to connect to');
+            for (const selector of captchaSelectors) {
+                try {
+                    const element = await this.page.$(selector);
+                    if (element && await element.isVisible()) {
+                        let captchaType = 'Generic CAPTCHA';
+                        if (selector.includes('recaptcha')) captchaType = 'reCAPTCHA';
+                        else if (selector.includes('hcaptcha')) captchaType = 'hCaptcha';
+                        else if (selector.includes('cf-challenge')) captchaType = 'Cloudflare Challenge';
+                        
+                        return { detected: true, type: captchaType, selector };
+                    }
+                } catch (e) {
+                    continue;
+                }
             }
 
-            // Get the WebSocket URL for the session
-            const response = await axios.get(
-                `${this.browserbaseApiUrl}/sessions/${this.sessionId}`,
-                { headers: this.browserbaseHeaders }
-            );
-            
-            const wsEndpoint = response.data.wsEndpoint;
-
-            // Connect Playwright to the Browserbase session
-            this.browser = await chromium.connectOverCDP(wsEndpoint);
-            this.context = this.browser.contexts()[0] || await this.browser.newContext();
-            this.page = this.context.pages()[0] || await this.context.newPage();
-            
-            // Set viewport
-            await this.page.setViewportSize(this.options.viewport);
-            
-            this.isConnected = true;
-            this.sessionData.startTime = new Date();
-            
-            console.log('✅ Connected to Browserbase session with Playwright');
-            this.emit('session-connected', { sessionId: this.sessionId });
-            
+            return { detected: false };
         } catch (error) {
-            console.error('❌ Failed to connect Playwright to Browserbase session:', error);
-            throw error;
+            console.error('❌ CAPTCHA detection failed:', error);
+            return { detected: false };
         }
     }
 
+    // Enhanced CAPTCHA handling
+    async handleCaptcha() {
+        try {
+            const captchaInfo = await this.detectCaptcha();
+            
+            if (!captchaInfo.detected) {
+                return { success: true, message: 'No CAPTCHA detected' };
+            }
+            
+            console.log(`🚨 CAPTCHA detected: ${captchaInfo.type}`);
+            
+            return {
+                success: false,
+                message: `CAPTCHA detected: ${captchaInfo.type}. Manual intervention required.`,
+                captchaType: captchaInfo.type,
+                requiresManualSolving: true
+            };
+            
+        } catch (error) {
+            console.error('❌ CAPTCHA handling failed:', error);
+            return { success: false, message: `CAPTCHA handling error: ${error.message}` };
+        }
+    }
+
+    // Enhanced navigation
     async navigateTo(url) {
         try {
+            await this.ensureSession();
+            
             if (!this.page) {
                 throw new Error('No active page');
             }
@@ -169,158 +249,247 @@ class BrowserController {
             console.log(`🌐 Navigating to: ${url}`);
             
             await this.page.goto(url, { 
-                waitUntil: 'networkidle',
-                timeout: this.options.timeout 
+                waitUntil: 'domcontentloaded',
+                timeout: 15000 
             });
             
-            const currentUrl = this.page.url();
-            const pageTitle = await this.page.title();
+            this.sessionData.currentUrl = url;
+            this.sessionData.pageTitle = await this.page.title();
             
-            this.sessionData.currentUrl = currentUrl;
-            this.sessionData.pageTitle = pageTitle;
-            this.sessionData.actions.push({
-                type: 'navigate',
+            console.log(`✅ Navigation completed: ${this.sessionData.pageTitle}`);
+            
+            return {
+                success: true,
                 url: url,
-                timestamp: Date.now()
-            });
-            
-            console.log(`✅ Navigated to: ${currentUrl}`);
-            this.emit('page-loaded', { url: currentUrl, title: pageTitle });
-            
-            return { url: currentUrl, title: pageTitle };
+                title: this.sessionData.pageTitle
+            };
             
         } catch (error) {
-            console.error('❌ Failed to navigate:', error);
+            console.error('❌ Navigation failed:', error);
             throw error;
         }
     }
 
-    async clickElement(selector, options = {}) {
+    // Enhanced local session creation
+    async createLocalSession() {
         try {
-            if (!this.page) {
-                throw new Error('No active page');
-            }
-
-            console.log(`🖱️ Clicking element: ${selector}`);
+            console.log('🚀 Creating local browser session...');
             
-            await this.page.click(selector, options);
-            
-            this.sessionData.actions.push({
-                type: 'click',
-                selector: selector,
-                timestamp: Date.now()
+            this.browser = await chromium.launch({
+                headless: false,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor',
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-extensions',
+                    '--disable-plugins',
+                    '--disable-images',
+                    '--disable-javascript',
+                    '--disable-default-apps',
+                    '--disable-sync',
+                    '--disable-translate',
+                    '--hide-scrollbars',
+                    '--mute-audio',
+                    '--no-default-browser-check',
+                    '--no-pings',
+                    '--password-store=basic',
+                    '--use-mock-keychain',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--disable-field-trial-config',
+                    '--disable-back-forward-cache',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-hang-monitor',
+                    '--disable-prompt-on-repost',
+                    '--disable-domain-reliability',
+                    '--disable-component-extensions-with-background-pages',
+                    '--disable-default-apps',
+                    '--disable-extensions',
+                    '--disable-features=TranslateUI',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-renderer-backgrounding',
+                    '--disable-sync',
+                    '--force-color-profile=srgb',
+                    '--metrics-recording-only',
+                    '--no-first-run',
+                    '--safebrowsing-disable-auto-update',
+                    '--enable-automation',
+                    '--password-store=basic',
+                    '--use-mock-keychain',
+                    '--disable-component-update',
+                    '--disable-background-networking',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-hang-monitor',
+                    '--disable-prompt-on-repost',
+                    '--disable-domain-reliability',
+                    '--disable-component-extensions-with-background-pages',
+                    '--disable-default-apps',
+                    '--disable-extensions',
+                    '--disable-features=TranslateUI',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-renderer-backgrounding',
+                    '--disable-sync',
+                    '--force-color-profile=srgb',
+                    '--metrics-recording-only',
+                    '--no-first-run',
+                    '--safebrowsing-disable-auto-update',
+                    '--enable-automation',
+                    '--password-store=basic',
+                    '--use-mock-keychain',
+                    '--disable-component-update',
+                    '--disable-background-networking',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--disable-features=TranslateUI,BlinkGenPropertyTrees'
+                ]
             });
+
+            this.context = await this.browser.newContext({
+                viewport: this.options.viewport,
+                userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                locale: 'en-US',
+                timezoneId: 'America/New_York',
+                permissions: ['geolocation'],
+                extraHTTPHeaders: {
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Cache-Control': 'max-age=0'
+                }
+            });
+
+            this.page = await this.context.newPage();
             
-            console.log(`✅ Clicked element: ${selector}`);
-            this.emit('action-completed', { type: 'click', selector });
+            // Enhanced stealth mode
+            await this.page.addInitScript(() => {
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined,
+                });
+                
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [
+                        { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
+                        { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
+                        { name: 'Native Client', filename: 'internal-nacl-plugin' }
+                    ],
+                });
+                
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en'],
+                });
+                
+                Object.defineProperty(navigator, 'hardwareConcurrency', {
+                    get: () => 8,
+                });
+                
+                Object.defineProperty(navigator, 'deviceMemory', {
+                    get: () => 8,
+                });
+                
+                window.chrome = {
+                    runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                    app: {}
+                };
+                
+                Object.defineProperty(screen, 'availHeight', { get: () => 1055 });
+                Object.defineProperty(screen, 'availWidth', { get: () => 1920 });
+                Object.defineProperty(screen, 'colorDepth', { get: () => 24 });
+                Object.defineProperty(screen, 'height', { get: () => 1080 });
+                Object.defineProperty(screen, 'pixelDepth', { get: () => 24 });
+                Object.defineProperty(screen, 'width', { get: () => 1920 });
+            });
+
+            this.sessionId = `local_${Date.now()}`;
+            this.isConnected = true;
+            this.sessionData.startTime = Date.now();
             
-            return { success: true, selector };
+            console.log(`✅ Local browser session created: ${this.sessionId}`);
+            
+            return {
+                success: true,
+                sessionId: this.sessionId,
+                type: 'local'
+            };
             
         } catch (error) {
-            console.error('❌ Failed to click element:', error);
+            console.error('❌ Failed to create local session:', error);
             throw error;
         }
     }
 
-    async fillField(selector, value) {
+    // Enhanced session closing
+    async closeSession() {
         try {
-            if (!this.page) {
-                throw new Error('No active page');
+            console.log('🔄 Closing browser session...');
+            
+            if (this.page && !this.page.isClosed()) {
+                await this.page.close();
             }
-
-            console.log(`📝 Filling field: ${selector} with "${value}"`);
             
-            await this.page.fill(selector, value);
+            if (this.context) {
+                await this.context.close();
+            }
             
-            this.sessionData.actions.push({
-                type: 'fill',
-                selector: selector,
-                value: value,
-                timestamp: Date.now()
-            });
+            if (this.browser && this.browser.isConnected()) {
+                await this.browser.close();
+            }
             
-            console.log(`✅ Filled field: ${selector}`);
-            this.emit('action-completed', { type: 'fill', selector, value });
+            this.isConnected = false;
+            this.sessionId = null;
+            this.page = null;
+            this.context = null;
+            this.browser = null;
+            this.retryCount = 0;
             
-            return { success: true, selector, value };
+            console.log('✅ Browser session closed successfully');
             
         } catch (error) {
-            console.error('❌ Failed to fill field:', error);
-            throw error;
+            console.error('❌ Failed to close session:', error);
         }
     }
 
-    async searchFor(query, searchSelector = 'input[type="search"], input[name="q"], input[placeholder*="search" i]') {
+    // Additional methods for compatibility
+    async getPageInfo() {
         try {
+            await this.ensureSession();
+            
             if (!this.page) {
-                throw new Error('No active page');
-            }
-
-            console.log(`🔍 Searching for: "${query}"`);
-            
-            // Try to find search input
-            const searchInput = await this.page.$(searchSelector);
-            if (!searchInput) {
-                throw new Error('No search input found');
+                return { url: 'No active page', title: 'No active page' };
             }
             
-            await this.page.fill(searchSelector, query);
-            await this.page.press(searchSelector, 'Enter');
-            
-            // Wait for search results
-            await this.page.waitForLoadState('networkidle');
-            
-            this.sessionData.actions.push({
-                type: 'search',
-                query: query,
-                timestamp: Date.now()
-            });
-            
-            console.log(`✅ Searched for: "${query}"`);
-            this.emit('action-completed', { type: 'search', query });
-            
-            return { success: true, query };
-            
+            return {
+                url: this.page.url(),
+                title: await this.page.title()
+            };
         } catch (error) {
-            console.error('❌ Failed to search:', error);
-            throw error;
-        }
-    }
-
-    async scrollPage(direction = 'down', amount = 500) {
-        try {
-            if (!this.page) {
-                throw new Error('No active page');
-            }
-
-            console.log(`📜 Scrolling ${direction} by ${amount}px`);
-            
-            if (direction === 'down') {
-                await this.page.evaluate((amount) => window.scrollBy(0, amount), amount);
-            } else if (direction === 'up') {
-                await this.page.evaluate((amount) => window.scrollBy(0, -amount), amount);
-            }
-            
-            this.sessionData.actions.push({
-                type: 'scroll',
-                direction: direction,
-                amount: amount,
-                timestamp: Date.now()
-            });
-            
-            console.log(`✅ Scrolled ${direction}`);
-            this.emit('action-completed', { type: 'scroll', direction, amount });
-            
-            return { success: true, direction, amount };
-            
-        } catch (error) {
-            console.error('❌ Failed to scroll:', error);
-            throw error;
+            console.error('❌ Failed to get page info:', error);
+            return { url: 'Error', title: 'Error' };
         }
     }
 
     async takeScreenshot(filename = null) {
         try {
+            await this.ensureSession();
+            
             if (!this.page) {
                 throw new Error('No active page');
             }
@@ -329,207 +498,24 @@ class BrowserController {
             const screenshotName = filename || `screenshot_${timestamp}.png`;
             const screenshotPath = path.join(this.screenshotsDir, screenshotName);
             
-            console.log('📸 Taking screenshot...');
-            
-            await this.page.screenshot({ 
-                path: screenshotPath,
+            const screenshotBuffer = await this.page.screenshot({ 
+                type: 'png',
                 fullPage: true 
             });
             
-            this.sessionData.screenshots.push({
-                path: screenshotPath,
-                timestamp: Date.now()
-            });
+            if (filename) {
+                await fs.writeFile(screenshotPath, screenshotBuffer);
+                this.sessionData.screenshots.push({
+                    path: screenshotPath,
+                    timestamp: Date.now()
+                });
+            }
             
-            console.log(`✅ Screenshot saved: ${screenshotPath}`);
-            this.emit('screenshot-taken', { path: screenshotPath });
-            
-            return screenshotPath;
+            return screenshotBuffer;
             
         } catch (error) {
             console.error('❌ Failed to take screenshot:', error);
             throw error;
-        }
-    }
-
-    async extractPageData() {
-        try {
-            if (!this.page) {
-                throw new Error('No active page');
-            }
-
-            console.log('📊 Extracting page data...');
-            
-            const pageData = await this.page.evaluate(() => {
-                return {
-                    title: document.title,
-                    url: window.location.href,
-                    headings: Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => ({
-                        tag: h.tagName,
-                        text: h.textContent.trim(),
-                        level: parseInt(h.tagName.charAt(1))
-                    })),
-                    links: Array.from(document.querySelectorAll('a[href]')).map(a => ({
-                        text: a.textContent.trim(),
-                        href: a.href
-                    })),
-                    images: Array.from(document.querySelectorAll('img[src]')).map(img => ({
-                        src: img.src,
-                        alt: img.alt,
-                        title: img.title
-                    })),
-                    forms: Array.from(document.querySelectorAll('form')).map(form => ({
-                        action: form.action,
-                        method: form.method,
-                        inputs: Array.from(form.querySelectorAll('input, textarea, select')).map(input => ({
-                            type: input.type,
-                            name: input.name,
-                            placeholder: input.placeholder,
-                            required: input.required
-                        }))
-                    })),
-                    tables: Array.from(document.querySelectorAll('table')).map(table => {
-                        const rows = Array.from(table.querySelectorAll('tr'));
-                        return {
-                            headers: rows[0] ? Array.from(rows[0].querySelectorAll('th, td')).map(cell => cell.textContent.trim()) : [],
-                            rows: rows.slice(1).map(row => 
-                                Array.from(row.querySelectorAll('td')).map(cell => cell.textContent.trim())
-                            )
-                        };
-                    })
-                };
-            });
-            
-            this.sessionData.extractedData.push({
-                data: pageData,
-                timestamp: Date.now()
-            });
-            
-            console.log('✅ Page data extracted');
-            this.emit('data-extracted', { data: pageData });
-            
-            return pageData;
-            
-        } catch (error) {
-            console.error('❌ Failed to extract page data:', error);
-            throw error;
-        }
-    }
-
-    async waitForElement(selector, timeout = 10000) {
-        try {
-            if (!this.page) {
-                throw new Error('No active page');
-            }
-
-            console.log(`⏳ Waiting for element: ${selector}`);
-            
-            await this.page.waitForSelector(selector, { timeout });
-            
-            console.log(`✅ Element found: ${selector}`);
-            return true;
-            
-        } catch (error) {
-            console.error(`❌ Element not found: ${selector}`, error);
-            throw error;
-        }
-    }
-
-    async getElementText(selector) {
-        try {
-            if (!this.page) {
-                throw new Error('No active page');
-            }
-
-            const text = await this.page.textContent(selector);
-            console.log(`📄 Element text: ${text}`);
-            
-            return text;
-            
-        } catch (error) {
-            console.error('❌ Failed to get element text:', error);
-            throw error;
-        }
-    }
-
-    async closeSession() {
-        try {
-            if (this.page) {
-                await this.page.close();
-            }
-            
-            if (this.context) {
-                await this.context.close();
-            }
-            
-            if (this.browser) {
-                await this.browser.close();
-            }
-            
-            if (this.sessionId) {
-                await axios.delete(
-                    `${this.browserbaseApiUrl}/sessions/${this.sessionId}`,
-                    { headers: this.browserbaseHeaders }
-                );
-            }
-            
-            this.isConnected = false;
-            this.sessionId = null;
-            this.page = null;
-            this.context = null;
-            this.browser = null;
-            
-            console.log('✅ Browser session closed');
-            this.emit('session-closed');
-            
-        } catch (error) {
-            console.error('❌ Failed to close session:', error);
-            throw error;
-        }
-    }
-
-    getStatus() {
-        return {
-            isConnected: this.isConnected,
-            sessionId: this.sessionId,
-            currentUrl: this.sessionData.currentUrl,
-            pageTitle: this.sessionData.pageTitle,
-            actionsCount: this.sessionData.actions.length,
-            screenshotsCount: this.sessionData.screenshots.length,
-            extractedDataCount: this.sessionData.extractedData.length
-        };
-    }
-
-    getSessionData() {
-        return this.sessionData;
-    }
-
-    on(event, callback) {
-        if (!this.eventListeners.has(event)) {
-            this.eventListeners.set(event, []);
-        }
-        this.eventListeners.get(event).push(callback);
-    }
-
-    off(event, callback) {
-        if (this.eventListeners.has(event)) {
-            const listeners = this.eventListeners.get(event);
-            const index = listeners.indexOf(callback);
-            if (index > -1) {
-                listeners.splice(index, 1);
-            }
-        }
-    }
-
-    emit(event, ...args) {
-        if (this.eventListeners.has(event)) {
-            this.eventListeners.get(event).forEach(callback => {
-                try {
-                    callback(...args);
-                } catch (error) {
-                    console.error(`❌ Error in event listener for ${event}:`, error);
-                }
-            });
         }
     }
 }

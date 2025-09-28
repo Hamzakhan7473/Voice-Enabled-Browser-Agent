@@ -775,6 +775,345 @@
             }
         }
 
+        /* Live Browser View Styles */
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #10b981;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .live-browser-container {
+            margin-top: 1rem;
+        }
+
+        .live-browser-view {
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #1a1a1a;
+            border: 2px solid #333;
+        }
+
+        .live-browser-view img {
+            width: 100%;
+            height: auto;
+            display: block;
+            max-height: 500px;
+            object-fit: contain;
+        }
+
+        .browser-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.3) 100%);
+        }
+
+        .action-indicator {
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            background: rgba(16, 185, 129, 0.9);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+            animation: slideInFromLeft 0.5s ease-out;
+        }
+
+        @keyframes slideInFromLeft {
+            0% {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .action-indicator.typing {
+            background: rgba(59, 130, 246, 0.9);
+        }
+
+        .action-indicator.searching {
+            background: rgba(245, 158, 11, 0.9);
+        }
+
+        .action-indicator.navigating {
+            background: rgba(139, 92, 246, 0.9);
+        }
+
+        /* Task Tracking Styles */
+        .task-status {
+            color: #10b981;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .task-progress-container {
+            margin: 1rem 0;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #34d399);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            text-align: center;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .task-steps {
+            margin-top: 1rem;
+        }
+
+        .task-step {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            border-left: 3px solid transparent;
+        }
+
+        .task-step.completed {
+            border-left-color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .task-step.running {
+            border-left-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .task-step.failed {
+            border-left-color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .step-icon {
+            margin-right: 0.75rem;
+            font-size: 1.25rem;
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-title {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+
+        .step-description {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        /* Confirmation Dialog Styles */
+        .confirmation-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .confirmation-dialog {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(20px);
+        }
+
+        .confirmation-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .confirmation-icon {
+            font-size: 2rem;
+            margin-right: 1rem;
+        }
+
+        .confirmation-content p {
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+
+        .confirmation-risks {
+            margin-bottom: 1rem;
+        }
+
+        .confirmation-risks h4 {
+            color: #f59e0b;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .confirmation-risks ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .confirmation-risks li {
+            padding: 0.25rem 0;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .confirmation-risks li:before {
+            content: "⚠️ ";
+            margin-right: 0.5rem;
+        }
+
+        .confirmation-alternatives {
+            margin-bottom: 1.5rem;
+        }
+
+        .confirmation-alternatives h4 {
+            color: #10b981;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .confirmation-alternatives ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .confirmation-alternatives li {
+            padding: 0.25rem 0;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .confirmation-alternatives li:before {
+            content: "💡 ";
+            margin-right: 0.5rem;
+        }
+
+        .confirmation-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+
+        /* Clarification Dialog Styles */
+        .clarification-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .clarification-dialog {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(20px);
+        }
+
+        .clarification-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .clarification-icon {
+            font-size: 2rem;
+            margin-right: 1rem;
+        }
+
+        .clarification-content p {
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+
+        .clarification-input input {
+            width: 100%;
+            padding: 0.75rem;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .clarification-input input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .clarification-input input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .clarification-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+
         @keyframes shimmer {
             0% { transform: translateX(-100%); }
             50% { transform: translateX(100%); }
@@ -975,7 +1314,36 @@
                 </div>
             </div>
         </div>
-
+        
+        <!-- Live Browser View -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" stroke="currentColor" stroke-width="2"/>
+                        <line x1="8" y1="21" x2="16" y2="21" stroke="currentColor" stroke-width="2"/>
+                        <line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                </div>
+                <h3 class="card-title">🔴 Live Browser View</h3>
+                <div class="live-indicator">
+                    <div class="pulse-dot"></div>
+                    <span id="liveStatus">Agent is controlling browser</span>
+                </div>
+            </div>
+            
+            <div class="live-browser-container">
+                <div class="live-browser-view">
+                    <img id="liveBrowserImage" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgdmlld0JveD0iMCAwIDgwMCA2MDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iNjAwIiBmaWxsPSIjMWExYTFhIi8+Cjx0ZXh0IHg9IjQwMCIgeT0iMzAwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjNjY2IiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMjQiPkJyb3dzZXIgd2lsbCBhcHBlYXIgaGVyZSBsaXZlPC90ZXh0Pgo8L3N2Zz4=" alt="Live Browser View" />
+                    <div class="browser-overlay">
+                        <div class="action-indicator" id="actionIndicator">
+                            <span id="actionText">Ready to receive commands</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <!-- Activity Feed -->
         <div class="activity-feed">
             <div class="feed-header">
@@ -1066,6 +1434,74 @@
                 </div>
             <div id="successText"></div>
         </div>
+
+        <!-- Task Tracking Panel -->
+        <div class="card" id="taskTrackingPanel" style="display: none;">
+            <div class="card-header">
+                <div class="card-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                </div>
+                <h3 class="card-title">📊 Task Progress</h3>
+                <div class="task-status" id="taskStatus">No active tasks</div>
+            </div>
+            
+            <div class="task-progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                </div>
+                <div class="progress-text" id="progressText">0% Complete</div>
+            </div>
+            
+            <div class="task-steps" id="taskSteps">
+                <!-- Steps will be populated dynamically -->
+            </div>
+        </div>
+
+        <!-- Confirmation Dialog -->
+        <div class="confirmation-overlay" id="confirmationOverlay" style="display: none;">
+            <div class="confirmation-dialog">
+                <div class="confirmation-header">
+                    <div class="confirmation-icon">⚠️</div>
+                    <h3>Confirmation Required</h3>
+                </div>
+                <div class="confirmation-content">
+                    <p id="confirmationMessage">This action requires your confirmation.</p>
+                    <div class="confirmation-risks" id="confirmationRisks">
+                        <!-- Risks will be populated dynamically -->
+                    </div>
+                    <div class="confirmation-alternatives" id="confirmationAlternatives">
+                        <!-- Alternatives will be populated dynamically -->
+                    </div>
+                </div>
+                <div class="confirmation-actions">
+                    <button class="btn btn-secondary" id="confirmReject">Cancel</button>
+                    <button class="btn btn-primary" id="confirmAccept">Proceed</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Clarification Dialog -->
+        <div class="clarification-overlay" id="clarificationOverlay" style="display: none;">
+            <div class="clarification-dialog">
+                <div class="clarification-header">
+                    <div class="clarification-icon">❓</div>
+                    <h3>Clarification Needed</h3>
+                </div>
+                <div class="clarification-content">
+                    <p id="clarificationQuestion">I need more information to complete this task.</p>
+                </div>
+                <div class="clarification-input">
+                    <input type="text" id="clarificationAnswer" placeholder="Your answer...">
+                </div>
+                <div class="clarification-actions">
+                    <button class="btn btn-secondary" id="clarificationCancel">Cancel</button>
+                    <button class="btn btn-primary" id="clarificationSubmit">Submit</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -1146,8 +1582,106 @@
 
         socket.on('browser-initialized', (data) => {
             updateBrowserStatus(true);
+            currentPage.textContent = 'Initializing...';
+            sessionId.textContent = data.sessionId || 'Unknown';
             addLog(`🌐 Browser session initialized: ${data.sessionId}`, 'success');
         });
+
+        socket.on('page-loaded', (data) => {
+            currentPage.textContent = data.title || data.url || 'Unknown Page';
+            addLog(`📄 Page loaded: ${data.title || data.url}`, 'info');
+        });
+
+            socket.on('action-completed', (data) => {
+                if (data.type === 'navigate') {
+                    currentPage.textContent = data.title || data.url || 'Unknown Page';
+                }
+                addLog(`✅ Action completed: ${data.type}`, 'success');
+            });
+
+            // Live screenshot streaming
+            socket.on('live-screenshot', (data) => {
+                const liveImage = document.getElementById('liveBrowserImage');
+                const actionIndicator = document.getElementById('actionIndicator');
+                const actionText = document.getElementById('actionText');
+                
+                if (liveImage && data.image) {
+                    liveImage.src = `data:image/png;base64,${data.image}`;
+                    
+                    // Update action indicator based on action type
+                    if (data.action === 'typing') {
+                        actionIndicator.className = 'action-indicator typing';
+                        actionText.textContent = 'Typing search query...';
+                    } else if (data.action === 'search-completed') {
+                        actionIndicator.className = 'action-indicator searching';
+                        actionText.textContent = 'Search completed!';
+                    } else if (data.action === 'navigation-completed') {
+                        actionIndicator.className = 'action-indicator navigating';
+                        actionText.textContent = `Navigated to: ${data.title || data.url}`;
+                    }
+                    
+                    // Auto-hide action indicator after 3 seconds
+                    setTimeout(() => {
+                        actionIndicator.className = 'action-indicator';
+                        actionText.textContent = 'Ready to receive commands';
+                    }, 3000);
+                }
+            });
+
+            // Task tracking events
+            socket.on('task-started', (task) => {
+                showTaskTrackingPanel(task);
+                addLog(`🎯 Task started: ${task.description}`, 'info');
+            });
+
+            socket.on('step-started', (data) => {
+                updateTaskStep(data.taskId, data.step.stepNumber, 'running', data.step.description);
+                addLog(`📊 Step ${data.step.stepNumber}: ${data.step.description}`, 'info');
+            });
+
+            socket.on('step-completed', (data) => {
+                updateTaskStep(data.taskId, data.stepNumber, 'completed');
+                addLog(`✅ Step ${data.stepNumber} completed`, 'success');
+            });
+
+            socket.on('step-failed', (data) => {
+                updateTaskStep(data.taskId, data.stepNumber, 'failed', data.error.message);
+                addLog(`❌ Step ${data.stepNumber} failed: ${data.error.message}`, 'error');
+            });
+
+            socket.on('task-completed', (task) => {
+                hideTaskTrackingPanel();
+                addLog(`🎉 Task completed: ${task.description}`, 'success');
+            });
+
+            socket.on('task-failed', (task) => {
+                hideTaskTrackingPanel();
+                addLog(`💥 Task failed: ${task.description}`, 'error');
+            });
+
+            // Confirmation events
+            socket.on('confirmation-requested', (confirmation) => {
+                showConfirmationDialog(confirmation);
+            });
+
+            socket.on('confirmation-provided', (result) => {
+                hideConfirmationDialog();
+                if (result.confirmed) {
+                    addLog(`👤 User confirmed action`, 'success');
+                } else {
+                    addLog(`👤 User rejected action`, 'warning');
+                }
+            });
+
+            // Clarification events
+            socket.on('clarification-needed', (clarification) => {
+                showClarificationDialog(clarification);
+            });
+
+            socket.on('clarification-provided', (clarification) => {
+                hideClarificationDialog();
+                addLog(`💡 Clarification provided: ${clarification.answer}`, 'info');
+            });
 
         socket.on('error', (data) => {
             addLog(`❌ Error: ${data.message}`, 'error');
@@ -1378,6 +1912,167 @@
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal')) {
                 e.target.style.display = 'none';
+            }
+        });
+
+        // Task tracking functions
+        function showTaskTrackingPanel(task) {
+            const panel = document.getElementById('taskTrackingPanel');
+            const status = document.getElementById('taskStatus');
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+            
+            status.textContent = `Task: ${task.description}`;
+            progressFill.style.width = '0%';
+            progressText.textContent = '0% Complete';
+            
+            panel.style.display = 'block';
+        }
+
+        function updateTaskStep(taskId, stepNumber, status, description = '') {
+            const stepsContainer = document.getElementById('taskSteps');
+            let stepElement = document.getElementById(`step-${stepNumber}`);
+            
+            if (!stepElement) {
+                stepElement = document.createElement('div');
+                stepElement.id = `step-${stepNumber}`;
+                stepElement.className = 'task-step';
+                stepElement.innerHTML = `
+                    <div class="step-icon">${getStepIcon(status)}</div>
+                    <div class="step-content">
+                        <div class="step-title">Step ${stepNumber}</div>
+                        <div class="step-description">${description}</div>
+                    </div>
+                `;
+                stepsContainer.appendChild(stepElement);
+            }
+            
+            stepElement.className = `task-step ${status}`;
+            stepElement.querySelector('.step-icon').textContent = getStepIcon(status);
+            
+            if (description) {
+                stepElement.querySelector('.step-description').textContent = description;
+            }
+        }
+
+        function getStepIcon(status) {
+            switch (status) {
+                case 'completed': return '✅';
+                case 'running': return '🔄';
+                case 'failed': return '❌';
+                default: return '⏳';
+            }
+        }
+
+        function hideTaskTrackingPanel() {
+            const panel = document.getElementById('taskTrackingPanel');
+            panel.style.display = 'none';
+        }
+
+        // Confirmation dialog functions
+        function showConfirmationDialog(confirmation) {
+            const overlay = document.getElementById('confirmationOverlay');
+            const message = document.getElementById('confirmationMessage');
+            const risks = document.getElementById('confirmationRisks');
+            const alternatives = document.getElementById('confirmationAlternatives');
+            
+            message.textContent = confirmation.message;
+            
+            // Populate risks
+            if (confirmation.risks && confirmation.risks.length > 0) {
+                risks.innerHTML = `
+                    <h4>Potential Risks:</h4>
+                    <ul>
+                        ${confirmation.risks.map(risk => `<li>${risk}</li>`).join('')}
+                    </ul>
+                `;
+            } else {
+                risks.innerHTML = '';
+            }
+            
+            // Populate alternatives
+            if (confirmation.alternatives && confirmation.alternatives.length > 0) {
+                alternatives.innerHTML = `
+                    <h4>Alternatives:</h4>
+                    <ul>
+                        ${confirmation.alternatives.map(alt => `<li>${alt}</li>`).join('')}
+                    </ul>
+                `;
+            } else {
+                alternatives.innerHTML = '';
+            }
+            
+            overlay.style.display = 'flex';
+            
+            // Store confirmation ID for response
+            currentConfirmation = confirmation.id;
+        }
+
+        function hideConfirmationDialog() {
+            const overlay = document.getElementById('confirmationOverlay');
+            overlay.style.display = 'none';
+            currentConfirmation = null;
+        }
+
+        // Clarification dialog functions
+        function showClarificationDialog(clarification) {
+            const overlay = document.getElementById('clarificationOverlay');
+            const question = document.getElementById('clarificationQuestion');
+            const answerInput = document.getElementById('clarificationAnswer');
+            
+            question.textContent = clarification.question;
+            answerInput.value = '';
+            
+            overlay.style.display = 'flex';
+            answerInput.focus();
+        }
+
+        function hideClarificationDialog() {
+            const overlay = document.getElementById('clarificationOverlay');
+            overlay.style.display = 'none';
+        }
+
+        // Event listeners for new UI components
+        document.getElementById('confirmAccept').addEventListener('click', () => {
+            if (currentConfirmation) {
+                socket.emit('confirmation-response', {
+                    confirmed: true,
+                    confirmationId: currentConfirmation
+                });
+                hideConfirmationDialog();
+            }
+        });
+
+        document.getElementById('confirmReject').addEventListener('click', () => {
+            if (currentConfirmation) {
+                socket.emit('confirmation-response', {
+                    confirmed: false,
+                    confirmationId: currentConfirmation
+                });
+                hideConfirmationDialog();
+            }
+        });
+
+        document.getElementById('clarificationSubmit').addEventListener('click', () => {
+            const answer = document.getElementById('clarificationAnswer').value;
+            if (answer.trim()) {
+                socket.emit('clarification-response', {
+                    taskId: 'current',
+                    stepNumber: 1,
+                    answer: answer.trim()
+                });
+                hideClarificationDialog();
+            }
+        });
+
+        document.getElementById('clarificationCancel').addEventListener('click', () => {
+            hideClarificationDialog();
+        });
+
+        // Handle Enter key in clarification input
+        document.getElementById('clarificationAnswer').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('clarificationSubmit').click();
             }
         });
 
