@@ -15,6 +15,8 @@ import ContextManager from './context/ContextManager.js';
 import FeedbackSystem from './feedback/FeedbackSystem.js';
 import ErrorHandler from './utils/ErrorHandler.js';
 import ExportSystem from './utils/ExportSystem.js';
+import TaskTracker from './core/TaskTracker.js';
+import UserConfirmationSystem from './core/UserConfirmationSystem.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -118,11 +120,15 @@ class VoiceEnabledBrowserAgent {
                 sessionDirectory: process.env.SESSION_ARCHIVE_DIRECTORY || './sessions'
             });
 
+            this.taskTracker = new TaskTracker();
+            this.confirmationSystem = new UserConfirmationSystem();
+
             // Initialize Deepgram
             await this.audioCapture.initializeDeepgram(process.env.DEEPGRAM_API_KEY);
             
             // Set up event listeners
             this.setupEventListeners();
+            this.setupAdvancedEventListeners();
             
             this.isInitialized = true;
             console.log('✅ Voice Enabled Browser Agent initialized successfully');
@@ -266,6 +272,41 @@ class VoiceEnabledBrowserAgent {
                 }
             });
 
+            // Handle clarification responses
+            socket.on('clarification-response', async (data) => {
+                try {
+                    const { taskId, stepNumber, answer } = data;
+                    this.confirmationSystem.provideClarification(taskId, stepNumber, answer);
+                } catch (error) {
+                    console.error('❌ Error handling clarification:', error);
+                    socket.emit('error', { message: error.message });
+                }
+            });
+
+            // Get task status
+            socket.on('get-task-status', () => {
+                const activeTasks = this.taskTracker.getActiveTasks();
+                const currentTask = this.taskTracker.getCurrentTask();
+                const stats = this.taskTracker.getTaskStats();
+                
+                socket.emit('task-status', {
+                    activeTasks,
+                    currentTask,
+                    stats
+                });
+            });
+
+            // Get confirmation stats
+            socket.on('get-confirmation-stats', () => {
+                const stats = this.confirmationSystem.getConfirmationStats();
+                const pending = this.confirmationSystem.getPendingConfirmations();
+                
+                socket.emit('confirmation-stats', {
+                    stats,
+                    pending
+                });
+            });
+
             socket.on('initialize-browser', async () => {
                 try {
                     await this.browserController.createSession();
@@ -339,6 +380,11 @@ class VoiceEnabledBrowserAgent {
         this.browserController.on('action-completed', (data) => {
             this.io.emit('action-completed', data);
         });
+        
+        // Live screenshot streaming
+        this.browserController.on('live-screenshot', (data) => {
+            this.io.emit('live-screenshot', data);
+        });
 
         this.browserController.on('screenshot-taken', (data) => {
             this.io.emit('screenshot-taken', data);
@@ -361,6 +407,54 @@ class VoiceEnabledBrowserAgent {
         // Feedback system events
         this.feedbackSystem.on('feedback-generated', (data) => {
             this.io.emit('feedback-generated', data);
+        });
+    }
+
+    setupAdvancedEventListeners() {
+        // Task tracker events
+        this.taskTracker.on('task-started', (task) => {
+            this.io.emit('task-started', task);
+        });
+
+        this.taskTracker.on('step-started', (data) => {
+            this.io.emit('step-started', data);
+        });
+
+        this.taskTracker.on('step-completed', (data) => {
+            this.io.emit('step-completed', data);
+        });
+
+        this.taskTracker.on('step-failed', (data) => {
+            this.io.emit('step-failed', data);
+        });
+
+        this.taskTracker.on('task-completed', (task) => {
+            this.io.emit('task-completed', task);
+        });
+
+        this.taskTracker.on('task-failed', (task) => {
+            this.io.emit('task-failed', task);
+        });
+
+        this.taskTracker.on('screenshot-added', (data) => {
+            this.io.emit('task-screenshot', data);
+        });
+
+        // Confirmation system events
+        this.confirmationSystem.on('confirmation-requested', (confirmation) => {
+            this.io.emit('confirmation-requested', confirmation);
+        });
+
+        this.confirmationSystem.on('confirmation-provided', (result) => {
+            this.io.emit('confirmation-provided', result);
+        });
+
+        this.confirmationSystem.on('clarification-needed', (clarification) => {
+            this.io.emit('clarification-needed', clarification);
+        });
+
+        this.confirmationSystem.on('clarification-provided', (clarification) => {
+            this.io.emit('clarification-provided', clarification);
         });
     }
 
@@ -436,9 +530,48 @@ class VoiceEnabledBrowserAgent {
             this.isProcessing = true;
             console.log(`📝 Processing transcript: "${transcript}"`);
 
-            // Parse intent
-            const intent = await this.intentParser.parseIntent(transcript, this.contextManager.getContext());
+            // Get current context
+            const context = this.contextManager.getContext();
+            const browserStatus = this.browserController.getStatus();
+
+            // Parse intent with enhanced context
+            const intent = await this.intentParser.parseIntent(transcript, {
+                ...context,
+                currentUrl: browserStatus.currentUrl,
+                pageTitle: browserStatus.pageTitle,
+                recentActions: context.recentActions || []
+            });
+            
             console.log('🎯 Parsed intent:', intent);
+
+            // Check if confirmation is required
+            if (this.confirmationSystem.requiresConfirmation(intent, context)) {
+                const confirmation = await this.confirmationSystem.requestConfirmation(intent, context);
+                
+                // Wait for user confirmation
+                try {
+                    const confirmationResult = await this.confirmationSystem.waitForConfirmation(confirmation.id, 30000);
+                    
+                    if (!confirmationResult.confirmed) {
+                        console.log('👤 User rejected the action');
+                        this.io.emit('action-rejected', { intent, reason: confirmationResult.userResponse });
+                        return;
+                    }
+                } catch (timeoutError) {
+                    console.log('⏰ Confirmation timeout, proceeding with caution');
+                }
+            }
+
+            // Start task tracking for complex tasks
+            let taskId = null;
+            if (intent.steps && intent.steps.length > 1) {
+                taskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                this.taskTracker.startTask(taskId, {
+                    description: intent.originalText,
+                    intent,
+                    steps: intent.steps
+                });
+            }
 
             // Update context
             this.contextManager.addInteraction({
@@ -447,9 +580,22 @@ class VoiceEnabledBrowserAgent {
                 timestamp: Date.now()
             });
 
-            // Execute command
-            const result = await this.commandExecutor.executeCommand(intent);
+            // Execute command with task tracking
+            let result;
+            if (taskId && intent.steps) {
+                // Execute multi-step task
+                result = await this.executeMultiStepTask(taskId, intent);
+            } else {
+                // Execute single command
+                result = await this.commandExecutor.executeCommand(intent);
+            }
+            
             console.log('✅ Command executed:', result);
+
+            // Complete task if it was tracked
+            if (taskId) {
+                this.taskTracker.completeTask(taskId, result);
+            }
 
             // Generate feedback
             const feedback = await this.feedbackSystem.generateFeedback(result);
@@ -458,9 +604,77 @@ class VoiceEnabledBrowserAgent {
         } catch (error) {
             console.error('❌ Error processing transcript:', error);
             this.io.emit('error', { message: error.message });
+            
+            // Fail task if it was tracked
+            if (this.taskTracker.getCurrentTask()) {
+                this.taskTracker.failTask(this.taskTracker.getCurrentTask().id, error);
+            }
         } finally {
             this.isProcessing = false;
         }
+    }
+
+    async executeMultiStepTask(taskId, intent) {
+        const results = [];
+        
+        for (let i = 0; i < intent.steps.steps.length; i++) {
+            const step = intent.steps.steps[i];
+            
+            try {
+                // Update task progress
+                this.taskTracker.updateTaskProgress(taskId, step.step_number, {
+                    description: step.description,
+                    action: step.action
+                });
+
+                // Execute step
+                const stepIntent = {
+                    intent: step.action,
+                    parameters: {
+                        selector: step.selector,
+                        value: step.value,
+                        ...step.parameters
+                    },
+                    originalText: step.description
+                };
+
+                const stepResult = await this.commandExecutor.executeCommand(stepIntent);
+                
+                // Complete step
+                this.taskTracker.completeStep(taskId, step.step_number, stepResult);
+                results.push(stepResult);
+
+                // Add screenshot if available
+                if (this.browserController.page) {
+                    const screenshot = await this.browserController.page.screenshot({ type: 'png' });
+                    this.taskTracker.addScreenshot(taskId, {
+                        image: screenshot.toString('base64'),
+                        stepNumber: step.step_number
+                    });
+                }
+
+                // Check if confirmation is required for this step
+                if (step.requires_confirmation) {
+                    const confirmation = await this.confirmationSystem.requestConfirmation(stepIntent, {
+                        currentUrl: this.browserController.getStatus().currentUrl
+                    });
+                    
+                    const confirmationResult = await this.confirmationSystem.waitForConfirmation(confirmation.id, 30000);
+                    if (!confirmationResult.confirmed) {
+                        throw new Error(`Step ${step.step_number} rejected by user`);
+                    }
+                }
+
+                // Wait between steps for human-like behavior
+                await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+
+            } catch (error) {
+                this.taskTracker.failStep(taskId, step.step_number, error);
+                throw error;
+            }
+        }
+
+        return { success: true, steps: results, totalSteps: intent.steps.steps.length };
     }
 
     /**

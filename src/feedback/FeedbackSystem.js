@@ -13,7 +13,7 @@ class FeedbackSystem extends EventEmitter {
     this.logsDir = path.join(__dirname, '../../logs');
     this.audioDir = path.join(__dirname, '../../audio');
     this.isEnabled = options.enabled !== false;
-    this.ttsEnabled = options.ttsEnabled !== false;
+    this.ttsEnabled = false; // Disabled to avoid TTS errors
     this.logLevel = options.logLevel || 'info';
     
     this.logLevels = {
@@ -147,6 +147,7 @@ class FeedbackSystem extends EventEmitter {
             '-v', voice,
             '-r', rate.toString(),
             '-o', outputPath,
+            '--data-format=LEF32@22050',
             text
           ]
         };
@@ -221,15 +222,25 @@ class FeedbackSystem extends EventEmitter {
     }
   }
 
+  async generateFeedback(intent, result, socket = null) {
+    try {
+      // This is the main method called by the main agent
+      return await this.provideExecutionFeedback(intent, result, socket);
+    } catch (error) {
+      this.log('error', 'Failed to generate feedback', { error: error.message });
+      throw error;
+    }
+  }
+
   async provideExecutionFeedback(intent, result, socket = null) {
     try {
       let feedbackMessage = '';
       let feedbackType = 'info';
 
-      if (result.success === false) {
+      if (result && result.success === false) {
         feedbackMessage = `Command failed: ${intent.originalText}. Error: ${result.error || 'Unknown error'}`;
         feedbackType = 'error';
-      } else {
+      } else if (result && result.success === true) {
         switch (intent.intent) {
           case 'search':
             feedbackMessage = `Searching for "${intent.parameters.query}" completed successfully.`;
