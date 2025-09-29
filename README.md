@@ -288,6 +288,21 @@ We've got big plans:
 - [ ] **Team features** - Share sessions with your team
 - [ ] **Enterprise security** - For the big companies
 
+## 📚 Academic Documentation
+
+### AI Agent Design Analysis
+
+This project includes comprehensive academic analysis using the PEPAS framework (Performance, Environment, Actuators, Sensors) for AI agent design. The analysis covers:
+
+- **System Architecture:** Detailed documentation of the voice browser automation system
+- **Agent Comparison:** Four different agent architectures (Simple Reflex, Model-Based Reflex, Goal-Based, Utility-Based)
+- **Real-World Implementation:** How theoretical agent design principles apply to practical browser automation
+- **Learning Agent Extension:** Analysis of machine learning capabilities and user adaptation
+
+📖 **[View Complete Assignment Documentation](AI_Assignment_Documentation.md)**
+
+The documentation demonstrates mastery of AI agent design principles through analysis of a real-world implementation, showcasing the evolution from simple reactive systems to sophisticated learning agents.
+
 ---
 
 **Built with ❤️ because talking to computers should be as easy as talking to people**
