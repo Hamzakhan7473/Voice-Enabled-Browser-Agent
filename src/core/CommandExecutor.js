@@ -262,10 +262,38 @@ class CommandExecutor extends EventEmitter {
         }
       }
     } else {
-      // No specific site mentioned, go to Google
-      console.log(`🌐 Navigating to Google for search...`);
-      await this.browserController.navigateTo('https://www.google.com');
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // CAPTCHA-bypass: Try alternative search engines first
+      const searchEngines = [
+        { url: 'https://duckduckgo.com', name: 'DuckDuckGo' },
+        { url: 'https://www.bing.com', name: 'Bing' },
+        { url: 'https://www.ecosia.org', name: 'Ecosia' },
+        { url: 'https://google.com', name: 'Google' }
+      ];
+      
+      let navigationSuccess = false;
+      
+      for (const engine of searchEngines) {
+        try {
+          console.log(`🔍 Trying ${engine.name} to avoid CAPTCHA...`);
+          await this.browserController.navigateTo(engine.url);
+          
+          // Anti-CAPTCHA delay
+          await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));
+          
+          navigationSuccess = true;
+          break;
+        } catch (error) {
+          console.warn(`⚠️ ${engine.name} failed: ${error.message}`);
+          continue;
+        }
+      }
+      
+      if (!navigationSuccess) {
+        // Fallback to Google if all else fails
+        console.log(`🌐 All alternatives failed, trying Google...`);
+        await this.browserController.navigateTo('https://www.google.com');
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
 
     // Try to find search input if selector not provided
@@ -1334,6 +1362,103 @@ class CommandExecutor extends EventEmitter {
       options: options || [],
       clarification: true
     };
+  }
+
+  // Fast multi-step execution for common tasks
+  async executeMultiStep(parameters) {
+    const { task_description } = parameters;
+    
+    console.log(`🔄 Starting multi-step task: ${task_description}`);
+    
+    try {
+      // Fast Google search implementation
+      if (task_description.toLowerCase().includes('google') && task_description.toLowerCase().includes('search')) {
+        const query = this.extractSearchQuery(task_description);
+        
+        // CAPTCHA-bypass: Try multiple search engines
+        const searchEngines = [
+            'https://duckduckgo.com',
+            'https://www.bing.com', 
+            'https://google.com',
+            'https://www.ecosia.org',
+            'https://www.startpage.com'
+        ];
+        
+        let searchSuccess = false;
+        for (const engine of searchEngines) {
+            try {
+                console.log(`🔍 Trying ${engine}...`);
+                await this.browserController.navigateTo(engine);
+                
+                // Apply anti-CAPTCHA delay
+                await this.browserController.page.waitForTimeout(2000 + Math.random() * 3000);
+                
+                await this.browserController.searchFor(query);
+                searchSuccess = true;
+                console.log(`✅ Search successful on ${engine}`);
+                break;
+            } catch (error) {
+                console.warn(`⚠️ ${engine} failed: ${error.message}`);
+                continue;
+            }
+        }
+        
+        if (!searchSuccess) {
+            throw new Error('All search engines failed - possible CAPTCHA on all sites');
+        }
+        
+        return {
+          success: true,
+          task: 'multi_step',
+          parameters: { task_description },
+          message: `Fast execution completed: ${task_description}`,
+          requiresConfirmation: false
+        };
+      }
+      
+      // Generic multi-step fallback
+      return {
+        success: true,
+        task: 'multi_step',
+        parameters: { task_description },
+        message: `Multi-step task initiated: ${task_description}`,
+        requiresConfirmation: true
+      };
+      
+    } catch (error) {
+      console.error(`❌ Multi-step task failed:`, error);
+      return {
+        success: false,
+        task: 'multi_step',
+        error: error.message,
+        message: `Multi-step task failed: ${error.message}`
+      };
+    }
+  }
+
+  // Helper to extract search query from natural language
+  extractSearchQuery(text) {
+    // Extract search terms after "search for", "search", "find"
+    const patterns = [
+      /search (?:it )?for (.+)/i,
+      /search (.+)/i,
+      /find (.+)/i,
+      /google (.+)/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match) {
+        return match[1].trim();
+      }
+    }
+    
+    // Fallback: extract last meaningful words
+    const words = text.split(' ').filter(word => 
+      !['open', 'google', 'and', 'search', 'it', 'for', 'the'].includes(word.toLowerCase())
+    );
+    
+    return words.join(' ') || 'general search';
   }
 }
 

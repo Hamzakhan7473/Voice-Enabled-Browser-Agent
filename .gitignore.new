@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build output
+dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Screenshots and traces
+screenshots/
+traces/
+
+# Data
+data/
+*.db
+*.db-journal
+
+# Temp files
+temp/
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test artifacts
+coverage/
+
+# Audio files (from legacy voice agent)
+audio/
+
+# Archives
+archives/
+exports/
+
+# TypeScript
+*.tsbuildinfo
+
