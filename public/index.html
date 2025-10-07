@@ -1538,6 +1538,11 @@
             showAgentGreeting(data.message);
         });
 
+        socket.on('agent-speaking', (data) => {
+            addLog(`⚡ ${data.message}`, 'info');
+            showAgentGreeting(data.message);
+        });
+
         socket.on('listening-started', (data) => {
             isListening = true;
             updateMicButton('listening');
@@ -1556,6 +1561,30 @@
             if (data.isFinal) {
                 addLog(`🎤 "${data.transcript}" (${Math.round(data.confidence * 100)}% confidence)`, 'info');
             }
+        });
+
+        socket.on('browser-initializing', (data) => {
+            updateBrowserStatus('Initializing...', false);
+            sessionId.textContent = 'Connecting...';
+            addLog(`🔄 ${data.message}`, 'info');
+        });
+
+        socket.on('browser-initialized', (data) => {
+            if (data.status === 'success') {
+                updateBrowserStatus('Connected', true);
+                currentPage.textContent = data.pageTitle || data.currentUrl || 'Browser Ready';
+                sessionId.textContent = data.sessionId || 'Unknown';
+                addLog(`🌐 Browser session initialized: ${data.sessionId}`, 'success');
+                addLog(data.message, 'success');
+            } else {
+                updateBrowserStatus('Error', false);
+                addLog(`❌ Browser initialization failed: ${data.error || data.message}`, 'error');
+            }
+        });
+
+        socket.on('browser-error', (data) => {
+            updateBrowserStatus('Error', false);
+            addLog(`❌ Browser Error: ${data.error || data.message}`, 'error');
         });
 
         socket.on('intent-parsed', (data) => {
@@ -1580,12 +1609,6 @@
             addLog(`❌ Execution failed: ${data.error}`, 'error');
         });
 
-        socket.on('browser-initialized', (data) => {
-            updateBrowserStatus(true);
-            currentPage.textContent = 'Initializing...';
-            sessionId.textContent = data.sessionId || 'Unknown';
-            addLog(`🌐 Browser session initialized: ${data.sessionId}`, 'success');
-        });
 
         socket.on('page-loaded', (data) => {
             currentPage.textContent = data.title || data.url || 'Unknown Page';
@@ -1625,6 +1648,51 @@
                         actionIndicator.className = 'action-indicator';
                         actionText.textContent = 'Ready to receive commands';
                     }, 3000);
+                }
+            });
+
+            // OpenAI Operator-specific events
+            socket.on('operator-ready', (data) => {
+                addLog('🤖 OpenAI Operator mode ready!', 'success');
+                updateBrowserStatus('Connected', true);
+                currentPage.textContent = 'Ready for Operator commands';
+            });
+
+            socket.on('operator-listening', (data) => {
+                addLog('🎙️ OpenAI Operator is listening for voice commands', 'info');
+                isListening = true;
+                updateMicButton('listening');
+            });
+
+            socket.on('operator-stopped', (data) => {
+                isListening = false;
+                updateMicButton('idle');
+                addLog('/🔇 OpenAI Operator stopped listening', 'info');
+            });
+
+            socket.on('operator-error', (data) => {
+                addLog(`❌ Operator Error: ${data.message}`, 'error');
+                updateMicButton('error');
+            });
+
+            socket.on('action-progress', (data) => {
+                addLog(`⚡ Action ${data.step}: ${data.action.action}`, 'info');
+                
+                // Update live browser image if screenshot provided
+                const liveImage = document.getElementById('liveBrowserImage');
+                const actionIndicator = document.getElementById('actionIndicator');
+                const actionText = document.getElementById('actionText');
+                
+                if (liveImage && data.screenshot) {
+                    liveImage.src = `data:image/png;base64,${data.screenshot}`;
+                    
+                    actionIndicator.className = 'action-indicator executing';
+                    actionText.textContent = `Executing: ${data.action.action}`;
+                    
+                    setTimeout(() => {
+                        actionIndicator.className = 'action-indicator';
+                        actionText.textContent = '';
+                    }, 2000);
                 }
             });
 
@@ -2075,6 +2143,136 @@
                 document.getElementById('clarificationSubmit').click();
             }
         });
+
+        // Status update functions
+        function updateBrowserStatus(status, connected) {
+            const browserStatus = document.getElementById('browserStatus');
+            const browserText = document.getElementById('browserText');
+            
+            if (connected) {
+                browserStatus.className = 'status-indicator connected';
+                browserText.textContent = status;
+            } else {
+                browserStatus.className = 'status-indicator disconnected';
+                browserText.textContent = status;
+            }
+        }
+
+        function updateConnectionStatus(connected) {
+            const connectionStatus = document.getElementById('connectionStatus');
+            const connectionText = document.getElementById('connectionText');
+            
+            if (connected) {
+                connectionStatus.className = 'status-indicator connected';
+                connectionText.textContent = 'Connected';
+            } else {
+                connectionStatus.className = 'status-indicator disconnected';
+                connectionText.textContent = 'Disconnected';
+            }
+        }
+
+        // Browser initialization function
+        function initializeBrowser() {
+            if (connectionStatus.className.includes('connected')) {
+                addLog('🌐 Initializing browser session...', 'info');
+                socket.emit('initialize-browser');
+            } else {
+                addLog('❌ Please connect to server first', 'error');
+            }
+        }
+
+        // Web Audio Capture Variables
+        let mediaRecorder = null;
+        let audioStream = null;
+        let isRecording = false;
+
+        // Microphone button click handler
+        document.getElementById('micButton').addEventListener('click', async () => {
+            if (isRecording) {
+                // Stop listening
+                await stopWebAudioCapture();
+                socket.emit('stop-listening');
+                updateMicButton('idle');
+                addLog('🔇 Voice listening stopped', 'info');
+            } else {
+                // Start listening
+                await startWebAudioCapture();
+                socket.emit('start-listening');
+                updateMicButton('listening');
+                addLog('🎤 Voice listening started', 'success');
+            }
+        });
+
+        // Start web audio capture
+        async function startWebAudioCapture() {
+            try {
+                // Request microphone access
+                audioStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                // Create MediaRecorder
+                mediaRecorder = new MediaRecorder(audioStream, {
+                    mimeType: 'audio/webm;codecs=opus'
+                });
+
+                let audioChunks = [];
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                        // Send audio chunks to backend for STT
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            const audioData = reader.result.split(',')[1]; // Remove data:audio/webm;base64,
+                            socket.emit('audio-data', {
+                                audio: audioData,
+                                timestamp: Date.now()
+                            });
+                        };
+                        reader.readAsDataURL(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    // Close audio stream
+                    if (audioStream) {
+                        audioStream.getTracks().forEach(track => track.stop());
+                        audioStream = null;
+                    }
+                };
+
+                // Start recording with small chunk sizes for real-time processing
+                mediaRecorder.start(100); // 100ms chunks
+                isRecording = true;
+                
+                console.log('🎤 Web audio capture started');
+                
+            } catch (error) {
+                console.error('❌ Microphone access denied:', error);
+                addLog('❌ Microphone access denied. Please allow microphone access.', 'error');
+            }
+        }
+
+        // Stop web audio capture
+        async function stopWebAudioCapture() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+            
+            if (audioStream) {
+                audioStream.getTracks().forEach(track => track.stop());
+                audioStream = null;
+            }
+            
+            isRecording = false;
+            console.log('🔇 Web audio capture stopped');
+        }
 
         // Initialize
         addLog('🚀 Web interface loaded successfully', 'success');

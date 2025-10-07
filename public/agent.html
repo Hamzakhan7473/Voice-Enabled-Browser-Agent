@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browser Agent Dashboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .header h1 {
+      color: #667eea;
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      color: #666;
+      font-size: 16px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 25px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .card h2 {
+      color: #333;
+      font-size: 20px;
+      margin-bottom: 15px;
+      border-bottom: 2px solid #667eea;
+      padding-bottom: 10px;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      color: #333;
+      font-weight: 500;
+      margin-bottom: 5px;
+    }
+
+    input, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 12px 30px;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .result {
+      background: #f8f9fa;
+      border-left: 4px solid #667eea;
+      padding: 15px;
+      border-radius: 6px;
+      margin-top: 15px;
+      display: none;
+    }
+
+    .result.show {
+      display: block;
+    }
+
+    .result.success {
+      border-left-color: #28a745;
+      background: #d4edda;
+    }
+
+    .result.error {
+      border-left-color: #dc3545;
+      background: #f8d7da;
+    }
+
+    .result h3 {
+      color: #333;
+      font-size: 16px;
+      margin-bottom: 10px;
+    }
+
+    .result pre {
+      background: white;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+      font-size: 12px;
+    }
+
+    .loader {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 15px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 500;
+      margin-top: 10px;
+    }
+
+    .status.running {
+      background: #cfe2ff;
+      color: #084298;
+    }
+
+    .status.success {
+      background: #d1e7dd;
+      color: #0f5132;
+    }
+
+    .status.failed {
+      background: #f8d7da;
+      color: #842029;
+    }
+
+    .examples {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+
+    .example {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      border: 2px solid transparent;
+    }
+
+    .example:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      border-color: #667eea;
+    }
+
+    .example h4 {
+      color: #667eea;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .example p {
+      color: #666;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .stats {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .stat {
+      flex: 1;
+      min-width: 150px;
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 6px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #667eea;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🤖 Browser Agent Dashboard</h1>
+      <p>Production-grade AI agent for web automation</p>
+    </div>
+
+    <div class="card">
+      <h2>Quick Examples</h2>
+      <div class="examples">
+        <div class="example" onclick="loadExample('weather', 'https://weather.com', 'Get current weather for San Francisco')">
+          <h4>🌤️ Weather Check</h4>
+          <p>Get weather information for a city</p>
+        </div>
+        <div class="example" onclick="loadExample('search', 'https://www.google.com', 'Search for latest AI news and summarize top 3 results')">
+          <h4>🔍 Web Search</h4>
+          <p>Search and extract information</p>
+        </div>
+        <div class="example" onclick="loadExample('news', 'https://news.ycombinator.com', 'Get the top 5 stories from Hacker News')">
+          <h4>📰 Hacker News</h4>
+          <p>Extract top stories</p>
+        </div>
+        <div class="example" onclick="loadExample('wikipedia', 'https://en.wikipedia.org', 'Search for quantum computing and extract a summary')">
+          <h4>📚 Wikipedia</h4>
+          <p>Research a topic</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Run Agent</h2>
+      <form id="agentForm">
+        <div class="form-group">
+          <label for="goal">Goal (what you want the agent to do) *</label>
+          <textarea id="goal" name="goal" placeholder="Example: Search for the best restaurants in NYC and extract the top 3 with ratings" required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="startUrl">Start URL (optional)</label>
+          <input type="url" id="startUrl" name="startUrl" placeholder="https://example.com">
+        </div>
+
+        <div class="form-group">
+          <label for="maxSteps">Max Steps (default: 30)</label>
+          <input type="number" id="maxSteps" name="maxSteps" placeholder="30" min="1" max="100">
+        </div>
+
+        <div class="form-group">
+          <label for="allowedDomains">Allowed Domains (comma-separated, optional)</label>
+          <input type="text" id="allowedDomains" name="allowedDomains" placeholder="example.com, google.com">
+        </div>
+
+        <button type="submit" id="submitBtn">Run Agent</button>
+      </form>
+
+      <div id="result" class="result">
+        <h3>Result</h3>
+        <div id="resultContent"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>System Status</h2>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-value" id="activeRuns">0</div>
+          <div class="stat-label">Active Runs</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="totalRuns">0</div>
+          <div class="stat-label">Total Runs</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="successRate">0%</div>
+          <div class="stat-label">Success Rate</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('agentForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const resultDiv = document.getElementById('result');
+    const resultContent = document.getElementById('resultContent');
+    
+    let totalRuns = 0;
+    let successfulRuns = 0;
+
+    // Load example
+    function loadExample(type, url, goal) {
+      document.getElementById('goal').value = goal;
+      document.getElementById('startUrl').value = url;
+    }
+
+    // Update stats
+    function updateStats() {
+      document.getElementById('totalRuns').textContent = totalRuns;
+      document.getElementById('successRate').textContent = 
+        totalRuns > 0 ? Math.round((successfulRuns / totalRuns) * 100) + '%' : '0%';
+    }
+
+    // Check health
+    async function checkHealth() {
+      try {
+        const response = await fetch('/health');
+        const data = await response.json();
+        document.getElementById('activeRuns').textContent = data.activeRuns || 0;
+      } catch (error) {
+        console.error('Health check failed:', error);
+      }
+    }
+
+    // Submit form
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const goal = document.getElementById('goal').value;
+      const startUrl = document.getElementById('startUrl').value;
+      const maxSteps = document.getElementById('maxSteps').value;
+      const allowedDomains = document.getElementById('allowedDomains').value;
+
+      // Disable form
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="loader"></span> Running...';
+      
+      // Show running status
+      resultDiv.className = 'result show';
+      resultDiv.classList.remove('success', 'error');
+      resultContent.innerHTML = '<div class="status running"><span class="loader"></span> Agent is working...</div>';
+
+      totalRuns++;
+      updateStats();
+      checkHealth();
+
+      try {
+        const response = await fetch('/agent/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            goal,
+            startUrl: startUrl || undefined,
+            maxSteps: maxSteps ? parseInt(maxSteps) : undefined,
+            allowedDomains: allowedDomains ? allowedDomains.split(',').map(d => d.trim()) : undefined
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          successfulRuns++;
+          resultDiv.classList.add('success');
+          resultContent.innerHTML = `
+            <div class="status success">✅ Success in ${data.steps} steps (${(data.duration / 1000).toFixed(2)}s)</div>
+            <pre>${JSON.stringify(data.result, null, 2)}</pre>
+          `;
+        } else {
+          resultDiv.classList.add('error');
+          resultContent.innerHTML = `
+            <div class="status failed">❌ Failed after ${data.steps} steps</div>
+            <pre>${data.error || 'Unknown error'}</pre>
+          `;
+        }
+
+        updateStats();
+
+      } catch (error) {
+        resultDiv.classList.add('error');
+        resultContent.innerHTML = `
+          <div class="status failed">❌ Error</div>
+          <pre>${error.message}</pre>
+        `;
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Run Agent';
+        checkHealth();
+      }
+    });
+
+    // Initial health check
+    checkHealth();
+    setInterval(checkHealth, 5000);
+  </script>
+</body>
+</html>
+

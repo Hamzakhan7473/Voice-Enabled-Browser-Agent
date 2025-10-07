@@ -11,6 +11,7 @@ import SpeechToText from './speech/SpeechToText.js';
 import IntentParser from './nlp/IntentParser.js';
 import BrowserController from './browser/BrowserController.js';
 import CommandExecutor from './core/CommandExecutor.js';
+import VoiceOperator from './core/VoiceOperator.js';
 import ContextManager from './context/ContextManager.js';
 import FeedbackSystem from './feedback/FeedbackSystem.js';
 import ErrorHandler from './utils/ErrorHandler.js';
@@ -44,6 +45,7 @@ class VoiceEnabledBrowserAgent {
         this.intentParser = null;
         this.browserController = null;
         this.commandExecutor = null;
+        this.voiceOperator = null;
         this.contextManager = null;
         this.feedbackSystem = null;
         this.errorHandler = null;
@@ -87,8 +89,8 @@ class VoiceEnabledBrowserAgent {
             });
 
             this.browserController = new BrowserController({
-                timeout: parseInt(process.env.BROWSER_TIMEOUT) || 30000,
-                headless: process.env.BROWSER_HEADLESS === 'true',
+                timeout: parseInt(process.env.BROWSER_TIMEOUT) || 15000,
+                headless: false, // Always non-headless for live view
                 viewport: {
                     width: parseInt(process.env.BROWSER_VIEWPORT_WIDTH) || 1920,
                     height: parseInt(process.env.BROWSER_VIEWPORT_HEIGHT) || 1080
@@ -98,6 +100,11 @@ class VoiceEnabledBrowserAgent {
             this.commandExecutor = new CommandExecutor({
                 browserController: this.browserController,
                 maxRetries: parseInt(process.env.MAX_RETRY_ATTEMPTS) || 3
+            });
+
+            // Initialize OpenAI Operator-style Voice Interface
+            this.voiceOperator = new VoiceOperator({
+                browserController: this.browserController
             });
 
             this.contextManager = new ContextManager({
@@ -123,15 +130,20 @@ class VoiceEnabledBrowserAgent {
             this.taskTracker = new TaskTracker();
             this.confirmationSystem = new UserConfirmationSystem();
 
+            // Initialize OpenAI Operator-style Voice Interface
+            await this.voiceOperator.initialize();
+            
             // Initialize Deepgram
             await this.audioCapture.initializeDeepgram(process.env.DEEPGRAM_API_KEY);
             
             // Set up event listeners
             this.setupEventListeners();
             this.setupAdvancedEventListeners();
+            this.setupOperatorEventListeners();
+            this.setupOperatorSocketHandlers();
             
             this.isInitialized = true;
-            console.log('✅ Voice Enabled Browser Agent initialized successfully');
+            console.log('✅ Voice Enabled Browser Agent with OpenAI Operator architecture initialized successfully');
             
         } catch (error) {
             console.error('❌ Failed to initialize Voice Enabled Browser Agent:', error);
@@ -309,13 +321,36 @@ class VoiceEnabledBrowserAgent {
 
             socket.on('initialize-browser', async () => {
                 try {
-                    await this.browserController.createSession();
+                    console.log('🚀 Creating browser session...');
+                    
+                    // Wait for browser controller to be ready
+                    if (!this.browserController) {
+                        throw new Error('Browser controller not initialized');
+                    }
+                    
+                    // Check if already initializing
+                    if (this.browserController.isInitializing) {
+                        console.log('⏳ Browser initialization already in progress...');
+                        socket.emit('browser-status', { status: 'initializing' });
+                        return;
+                    }
+                    
+                    const result = await this.browserController.createSession();
+                    const sessionId = result.sessionId || result;
+                    
                     socket.emit('browser-initialized', { 
-                        sessionId: this.browserController.sessionId,
-                        timestamp: Date.now() 
+                        sessionId: sessionId, 
+                        timestamp: Date.now(),
+                        status: 'success' 
                     });
+                    
                 } catch (error) {
-                    socket.emit('error', { message: error.message });
+                    console.error('❌ Failed to create session:', error);
+                    socket.emit('browser-error', { 
+                        error: error.message,
+                        sessionId: null,
+                        status: 'error' 
+                    });
                 }
             });
 
@@ -529,6 +564,12 @@ class VoiceEnabledBrowserAgent {
         try {
             this.isProcessing = true;
             console.log(`📝 Processing transcript: "${transcript}"`);
+            
+            // INSTANT VOICE RESPONSE - like OpenAI operator
+            this.io.emit('agent-speaking', {
+                message: "⚡ I'm on it! Let me handle that for you...",
+                type: 'immediate_response'
+            });
 
             // Get current context
             const context = this.contextManager.getContext();
@@ -732,6 +773,8 @@ class VoiceEnabledBrowserAgent {
         try {
             await this.initialize();
             
+            // Browser will be initialized on first command
+            
             this.server.listen(this.port, () => {
                 console.log(`🚀 Voice Enabled Browser Agent server running on port ${this.port}`);
                 console.log(`🌐 Frontend available at: http://localhost:${this.port}`);
@@ -741,6 +784,224 @@ class VoiceEnabledBrowserAgent {
             console.error('❌ Failed to start server:', error);
             process.exit(1);
         }
+    }
+
+
+    /**
+     * Setup OpenAI Operator-style event handlers
+     */
+    setupOperatorEventListeners() {
+        // VoiceOperator events
+        this.voiceOperator.on('action-progress', (data) => {
+            this.io.emit('action-progress', {
+                step: data.step,
+                action: data.action,
+                screenshot: data.screenshot,
+                message: data.message
+            });
+        });
+
+        this.voiceOperator.on('task-started', (data) => {
+            this.io.emit('task-started', data);
+            console.log(`🎯 OpenAI Operator task started: ${data.goal}`);
+        });
+
+        this.voiceOperator.on('task-completed', (data) => {
+            this.io.emit('task-completed', data);
+            console.log(`✅ OpenAI Operator task completed: ${data.goal}`);
+        });
+
+        this.voiceOperator.on('task-failed', (data) => {
+            this.io.emit('task-failed', data);
+            console.error(`❌ OpenAI Operator task failed: ${data.goal}`);
+        });
+
+        this.voiceOperator.on('agent-speaking', (data) => {
+            this.io.emit('agent-speaking', data);
+            this.io.emit('feedback-generated', {
+                type: 'agent_response',
+                message: data.message,
+                timestamp: new Date().toISOString()
+            });
+        });
+
+        this.voiceOperator.on('transcript-progress', (data) => {
+            this.io.emit('transcript-progress', data);
+        });
+
+        this.voiceOperator.on('browser-initialized', (data) => {
+            this.io.emit('browser-initialized', data);
+        });
+
+        this.voiceOperator.on('browser-error', (data) => {
+            this.io.emit('browser-error', data);
+        });
+
+        this.voiceOperator.on('browser-update', (data) => {
+            this.io.emit('live-screenshot', data);
+        });
+
+        this.voiceOperator.on('error', (data) => {
+            this.io.emit('error', data);
+        });
+    }
+
+    /**
+     * Set up Socket.IO handlers for OpenAI Operator mode
+     */
+    setupOperatorSocketHandlers() {
+        this.io.on('connection', (socket) => {
+            console.log('🔌 Client connected:', socket.id);
+            
+            // Initialize browser (both traditional and Operator modes)
+            socket.on('initialize-browser', async () => {
+                try {
+                    console.log('🌐 Initializing browser session...');
+                    
+                    // Initialize traditional browser
+                    await this.browserController.createSession();
+                    
+                    // Also initialize Operator browser
+                    const operatorReady = await this.voiceOperator.initializeBrowser();
+                    
+                    const browserStatus = this.browserController.getStatus();
+                    
+                    socket.emit('browser-initialized', {
+                        status: 'success',
+                        sessionId: browserStatus.sessionId,
+                        currentUrl: browserStatus.currentUrl,
+                        pageTitle: browserStatus.pageTitle,
+                        message: 'Browser initialized - both traditional and Operator modes ready!'
+                    });
+                    
+                    console.log(`✅ Browser session initialized: ${browserStatus.sessionId}`);
+                    
+                } catch (error) {
+                    console.error('❌ Failed to initialize browser session:', error);
+                    socket.emit('browser-error', {
+                        status: 'error',
+                        error: error.message,
+                        message: 'Browser initialization failed'
+                    });
+                }
+            });
+
+            // Initialize OpenAI Operator mode (separate handler)
+            socket.on('initialize-operator', async () => {
+                try {
+                    console.log('🤖 Initializing OpenAI Operator mode...');
+                    
+                    // Initialize browser for Operator
+                    const browserReady = await this.voiceOperator.initializeBrowser();
+                    
+                    if (browserReady) {
+                        socket.emit('operator-ready', {
+                            status: 'success',
+                            message: 'OpenAI Operator mode ready - Speak your commands!'
+                        });
+                        console.log('✅ OpenAI Operator mode initialized successfully');
+                    } else {
+                        socket.emit('operator-error', {
+                            status: 'error',
+                            message: 'Failed to initialize OpenAI Operator mode'
+                        });
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ Failed to initialize Operator mode:', error);
+                    socket.emit('operator-error', {
+                        status: 'error',
+                        message: `Operator initialization failed: ${error.message}`
+                    });
+                }
+            });
+            
+            // Start Operator voice listening
+            socket.on('start-operator-listening', async () => {
+                try {
+                    this.voiceOperator.startListening();
+                    socket.emit('operator-listening', {
+                        status: 'success',
+                        message: '🎙️ OpenAI Operator is now listening for voice commands'
+                    });
+                } catch (error) {
+                    socket.emit('operator-error', {
+                        status: 'error',
+                        message: `Failed to start Operator listening: ${error.message}`
+                    });
+                }
+            });
+            
+            // Stop Operator voice listening
+            socket.on('stop-operator-listening', () => {
+                this.voiceOperator.stopListening();
+                socket.emit('operator-stopped', {
+                    status: 'success',
+                    message: '🔇 OpenAI Operator stopped listening'
+                });
+            });
+            
+            // Send voice command directly to Operator
+            socket.on('operator-voice-command', async (data) => {
+                try {
+                    const { command } = data;
+                    if (!command || command.trim().length === 0) {
+                        socket.emit('operator-error', {
+                            status: 'error',
+                            message: 'Voice command is required'
+                        });
+                        return;
+                    }
+                    
+                    console.log(`🎯 Operator received command: "${command}"`);
+                    
+                    // Start listening indicator
+                    socket.emit('listening-stopped');
+                    
+                    // Execute via Operator
+                    await this.voiceOperator.executeGoal(command);
+                    
+                } catch (error) {
+                    console.error('❌ Operator command execution failed:', error);
+                    socket.emit('operator-error', {
+                        status: 'error',
+                        message: `Command execution failed: ${error.message}`
+                    });
+                }
+            });
+            
+            // Traditional voice command handler (for backward compatibility)
+            socket.on('voice-command', async (data) => {
+                try {
+                    const { command } = data;
+                    if (!command || command.trim().length === 0) {
+                        socket.emit('error', { message: 'Voice command is required' });
+                        return;
+                    }
+                    
+                    console.log(`🎯 Traditional command received: "${command}"`);
+                    
+                    // Also try Operator mode for complex commands
+                    try {
+                        await this.voiceOperator.executeGoal(command);
+                    } catch (operatorError) {
+                        console.warn('⚠️ Operator mode failed, falling back to traditional:', operatorError.message);
+                        
+                        // Fallback to traditional processing
+                        await this.processTranscript(command);
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ Voice command execution failed:', error);
+                    socket.emit('error', { message: `Command execution failed: ${error.message}` });
+                }
+            });
+
+            socket.on('disconnect', () => {
+                console.log('🔌 Client disconnected:', socket.id);
+                this.voiceOperator.stopListening();
+            });
+        });
     }
 
     /**

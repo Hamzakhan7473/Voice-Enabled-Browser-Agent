@@ -289,6 +289,26 @@ class IntentParser {
           ],
           max_tokens: 300, // Reduced for faster response
           temperature: this.temperature
+        }).catch(error => {
+            // Handle OpenAI API errors gracefully
+            if (error.status === 429) {
+                console.warn('⚠️ OpenAI quota exceeded, falling back to basic intent parsing');
+                return {
+                    choices: [{
+                        message: {
+                            content: JSON.stringify({
+                                intent: 'search',
+                                confidence: 0.7,
+                                parameters: { query: transcript },
+                                requiresConfirmation: true,
+                                riskLevel: 'medium',
+                                timestamp: new Date().toISOString()
+                            })
+                        }
+                    }]
+                };
+            }
+            throw error;
         });
 
       const parsedIntent = JSON.parse(response.choices[0].message.content);
