@@ -342,28 +342,17 @@ class BrowserController extends EventEmitter {
             const path = await import('path');
             const os = await import('os');
             
-            // Use your actual Chrome profile - this has your logins!
-            let profileDir = path.join(os.homedir(), '/Library/Application Support/Google/Chrome/Default');
+            // Use a temporary Chrome profile to avoid conflicts with regular Chrome
+            let profileDir = path.join(os.tmpdir(), `chrome-agent-${process.pid}-${Math.random().toString(36).substr(2, 9)}`);
             
-            // Try alternative Chrome profile locations if Default doesn't exist
-            if (!fs.existsSync(profileDir)) {
-                const altProfiles = [
-                    path.join(os.homedir(), '/Library/Application Support/Google/Chrome/Profile 1'),
-                    path.join(os.homedir(), '/Library/Application Support/Google/Chrome'),
-                    path.join(os.tmpdir(), `chrome-agent-${process.pid}-${Math.random().toString(36).substr(2, 9)}`)
-                ];
-                
-                for (const altProfile of altProfiles) {
-                    if (fs.existsSync(altProfile) || altProfile.includes('chrome-agent')) {
-                        profileDir = altProfile;
-                        break;
-                    }
-                }
+            // Clean up any existing temporary profile
+            if (fs.existsSync(profileDir)) {
+                fs.rmSync(profileDir, { recursive: true, force: true });
             }
             
             this.profileDir = profileDir;
             
-            // For real Chrome profile, don't delete it!
+            // Always clean up temporary profiles
             if (profileDir.includes('chrome-agent-')) {
                 if (fs.existsSync(profileDir)) {
                     fs.rmSync(profileDir, { recursive: true, force: true });

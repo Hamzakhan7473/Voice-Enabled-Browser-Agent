@@ -273,6 +273,27 @@ class VoiceEnabledBrowserAgent {
                 }
             });
 
+            // Handle browser-based audio data streaming
+            socket.on('audio-data', async (data) => {
+                try {
+                    if (!this.isListening) {
+                        console.log('⚠️ Received audio data but not listening, ignoring');
+                        return;
+                    }
+                    
+                    // Decode base64 audio data
+                    const audioBuffer = Buffer.from(data.audio, 'base64');
+                    
+                    // Send to Deepgram for live transcription
+                    if (this.audioCapture?.liveConnection) {
+                        this.audioCapture.liveConnection.send(audioBuffer);
+                    }
+                } catch (error) {
+                    console.error('❌ Error processing audio data:', error);
+                    socket.emit('error', { message: error.message });
+                }
+            });
+
             socket.on('confirmation-response', async (data) => {
                 try {
                     if (this.currentConfirmation) {
@@ -527,10 +548,21 @@ class VoiceEnabledBrowserAgent {
 
         try {
             this.isListening = true;
-            await this.audioCapture.startCapture();
-            console.log('🎙️ Started listening for voice commands');
+            
+            // Initialize Deepgram if not already done
+            if (!this.audioCapture.deepgramClient) {
+                await this.audioCapture.initializeDeepgram(process.env.DEEPGRAM_API_KEY);
+            }
+            
+            // Start live transcription for browser-based audio
+            if (!this.audioCapture.liveConnection) {
+                await this.audioCapture.startLiveTranscription();
+            }
+            
+            console.log('🎙️ Started listening for voice commands (browser audio mode)');
         } catch (error) {
             this.isListening = false;
+            console.error('❌ Failed to start listening:', error);
             throw error;
         }
     }
