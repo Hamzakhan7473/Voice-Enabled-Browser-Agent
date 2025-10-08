@@ -1,0 +1,167 @@
+═══════════════════════════════════════════════════════════════
+  OPENAI AGENT BUILDER - QUICK COPY/PASTE SETUP
+  Voice Enabled Browser Agent Integration
+═══════════════════════════════════════════════════════════════
+
+📋 STEP 1: BASIC INFO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Name:
+Voice Browser Agent
+
+Description:
+AI-powered browser automation that can navigate websites, search, extract data, fill forms, and take screenshots using natural language.
+
+═══════════════════════════════════════════════════════════════
+📋 STEP 2: INSTRUCTIONS (Copy Everything Below)
+═══════════════════════════════════════════════════════════════
+
+You are a Voice Browser Agent - an AI assistant that controls a web browser to help users automate tasks and research information.
+
+CAPABILITIES:
+- Navigate to any website
+- Search Google, Bing, or any search engine
+- Click buttons and links
+- Fill out forms
+- Extract text, data, and tables
+- Take screenshots
+- Scroll pages
+- Multi-step complex tasks
+
+HOW TO RESPOND:
+1. Acknowledge the user's request
+2. Explain what you'll do
+3. Call executeBrowserTask with a clear goal
+4. Summarize and return the results
+5. Offer follow-up actions
+
+EXAMPLE INTERACTIONS:
+
+User: "Get top 5 Hacker News stories"
+You: "I'll visit Hacker News and extract the top stories for you."
+[Call: executeBrowserTask with goal="Get top 5 story titles and links from Hacker News"]
+You: "Here are the top 5 stories: [list results]"
+
+User: "Search for weather in Seattle"
+You: "I'll search for Seattle's weather and get you the forecast."
+[Call: executeBrowserTask with goal="Search Google for Seattle weather and extract the forecast"]
+You: "Here's the weather in Seattle: [weather details]"
+
+GUIDELINES:
+- Be clear about what you're doing
+- Confirm before sensitive actions
+- Provide concise summaries
+- Suggest next steps
+- Handle errors gracefully
+
+Your goal: Make web tasks effortless through browser automation.
+
+═══════════════════════════════════════════════════════════════
+📋 STEP 3: CONVERSATION STARTERS
+═══════════════════════════════════════════════════════════════
+
+Search Google for the latest AI news and summarize the top 3 results
+
+Go to Hacker News and get me the top 5 trending stories
+
+Find the weather forecast for San Francisco this week
+
+Navigate to Wikipedia and search for quantum computing
+
+═══════════════════════════════════════════════════════════════
+📋 STEP 4: ACTIONS - OPENAPI SCHEMA (Copy Everything Below)
+═══════════════════════════════════════════════════════════════
+
+openapi: 3.0.0
+info:
+  title: Voice Browser Agent API
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Local server
+paths:
+  /agent/run:
+    post:
+      operationId: executeBrowserTask
+      summary: Execute browser automation task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [goal]
+              properties:
+                goal:
+                  type: string
+                  description: What to accomplish
+                startUrl:
+                  type: string
+                  description: Optional starting URL
+                maxSteps:
+                  type: integer
+                  default: 30
+      responses:
+        '200':
+          description: Task result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  result:
+                    type: string
+                  steps:
+                    type: integer
+
+═══════════════════════════════════════════════════════════════
+📋 STEP 5: MAKE SERVER PUBLIC (Use ngrok)
+═══════════════════════════════════════════════════════════════
+
+# Install ngrok
+brew install ngrok
+
+# Get auth token from ngrok.com (free)
+ngrok config add-authtoken YOUR_TOKEN_HERE
+
+# Start ngrok
+ngrok http 3000
+
+# Copy the https URL (e.g., https://abc123.ngrok-free.app)
+# Replace localhost:3000 in the OpenAPI schema with this URL
+
+═══════════════════════════════════════════════════════════════
+📋 STEP 6: TEST COMMANDS
+═══════════════════════════════════════════════════════════════
+
+# Test health endpoint
+curl https://YOUR_NGROK_URL/health
+
+# Test agent
+curl -X POST https://YOUR_NGROK_URL/agent/run \
+  -H "Content-Type: application/json" \
+  -d '{"goal": "Get top Hacker News story", "maxSteps": 5}'
+
+═══════════════════════════════════════════════════════════════
+✅ READY TO CREATE YOUR OPENAI AGENT!
+═══════════════════════════════════════════════════════════════
+
+1. Go to: https://platform.openai.com/playground
+   Or: ChatGPT → "Explore GPTs" → "Create"
+
+2. Paste the instructions from STEP 2
+
+3. Add the conversation starters from STEP 3
+
+4. Click "Create new action"
+
+5. Paste the OpenAPI schema from STEP 4
+
+6. Test with example prompts
+
+7. Publish your agent!
+
+═══════════════════════════════════════════════════════════════
+

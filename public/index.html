@@ -1507,7 +1507,7 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         // Socket connection
-        const socket = io('http://localhost:3001');
+        const socket = io('http://localhost:3000');
         let isListening = false;
         let currentConfirmation = null;
 
@@ -1768,14 +1768,7 @@
             addLog(`❌ Error: ${data.message}`, 'error');
         });
 
-        // Mic button click handler
-        micButton.addEventListener('click', () => {
-            if (isListening) {
-                socket.emit('stop-listening');
-            } else {
-                socket.emit('start-listening');
-            }
-        });
+        // Note: Mic button handler is below with proper audio capture integration
 
         // Update connection status
         function updateConnectionStatus(connected) {
@@ -2186,24 +2179,33 @@
         let audioStream = null;
         let isRecording = false;
 
-        // Microphone button click handler
+        // Microphone button click handler (FIXED - proper order)
         document.getElementById('micButton').addEventListener('click', async () => {
             if (isRecording) {
                 // Stop listening
-                await stopWebAudioCapture();
                 socket.emit('stop-listening');
+                await stopWebAudioCapture();
                 updateMicButton('idle');
                 addLog('🔇 Voice listening stopped', 'info');
             } else {
-                // Start listening
-                await startWebAudioCapture();
+                // Start backend listening FIRST
                 socket.emit('start-listening');
+                
+                // Wait a bit for backend to be ready
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Then start audio capture
+                await startWebAudioCapture();
                 updateMicButton('listening');
                 addLog('🎤 Voice listening started', 'success');
             }
         });
 
-        // Start web audio capture
+        // AudioContext for raw PCM audio (what Deepgram expects)
+        let audioContext = null;
+        let audioProcessor = null;
+        
+        // Start web audio capture with raw PCM
         async function startWebAudioCapture() {
             try {
                 // Request microphone access
@@ -2212,46 +2214,51 @@
                         sampleRate: 16000,
                         channelCount: 1,
                         echoCancellation: true,
-                        noiseSuppression: true
+                        noiseSuppression: true,
+                        autoGainControl: true
                     }
                 });
 
-                // Create MediaRecorder
-                mediaRecorder = new MediaRecorder(audioStream, {
-                    mimeType: 'audio/webm;codecs=opus'
+                // Create AudioContext for raw PCM processing
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: 16000
                 });
-
-                let audioChunks = [];
-
-                mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) {
-                        audioChunks.push(event.data);
-                        // Send audio chunks to backend for STT
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                            const audioData = reader.result.split(',')[1]; // Remove data:audio/webm;base64,
-                            socket.emit('audio-data', {
-                                audio: audioData,
-                                timestamp: Date.now()
-                            });
-                        };
-                        reader.readAsDataURL(event.data);
-                    }
-                };
-
-                mediaRecorder.onstop = () => {
-                    // Close audio stream
-                    if (audioStream) {
-                        audioStream.getTracks().forEach(track => track.stop());
-                        audioStream = null;
-                    }
-                };
-
-                // Start recording with small chunk sizes for real-time processing
-                mediaRecorder.start(100); // 100ms chunks
-                isRecording = true;
                 
-                console.log('🎤 Web audio capture started');
+                const source = audioContext.createMediaStreamSource(audioStream);
+                
+                // Create script processor for raw audio data
+                const bufferSize = 2048;
+                audioProcessor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+                
+                audioProcessor.onaudioprocess = (event) => {
+                    if (isRecording) {
+                        // Get raw PCM samples
+                        const inputData = event.inputBuffer.getChannelData(0);
+                        
+                        // Convert Float32 to Int16 (what Deepgram expects)
+                        const int16Array = new Int16Array(inputData.length);
+                        for (let i = 0; i < inputData.length; i++) {
+                            const s = Math.max(-1, Math.min(1, inputData[i]));
+                            int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                        }
+                        
+                        // Convert to base64 and send
+                        const base64 = btoa(String.fromCharCode(...new Uint8Array(int16Array.buffer)));
+                        socket.emit('audio-data', {
+                            audio: base64,
+                            format: 'linear16',
+                            sampleRate: 16000,
+                            timestamp: Date.now()
+                        });
+                    }
+                };
+                
+                // Connect the nodes
+                source.connect(audioProcessor);
+                audioProcessor.connect(audioContext.destination);
+                
+                isRecording = true;
+                console.log('🎤 Web audio capture started (raw PCM, 16kHz)');
                 
             } catch (error) {
                 console.error('❌ Microphone access denied:', error);
@@ -2261,16 +2268,26 @@
 
         // Stop web audio capture
         async function stopWebAudioCapture() {
-            if (mediaRecorder && mediaRecorder.state === 'recording') {
-                mediaRecorder.stop();
+            isRecording = false;
+            
+            // Disconnect audio processor
+            if (audioProcessor) {
+                audioProcessor.disconnect();
+                audioProcessor = null;
             }
             
+            // Close audio context
+            if (audioContext) {
+                await audioContext.close();
+                audioContext = null;
+            }
+            
+            // Stop microphone stream
             if (audioStream) {
                 audioStream.getTracks().forEach(track => track.stop());
                 audioStream = null;
             }
-            
-            isRecording = false;
+
             console.log('🔇 Web audio capture stopped');
         }
 
